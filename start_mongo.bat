@@ -1,0 +1,3 @@
+@echo off
+echo Starting local MongoDB...
+c:\Users\suraj\Desktop\placement\mongodb_local\mongodb-win32-x86_64-windows-7.0.14\bin\mongod.exe --dbpath c:\Users\suraj\Desktop\placement\mongodb_local\data\db

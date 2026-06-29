@@ -1,0 +1,10 @@
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+mongodb_local/
+mongodb.zip
+backend/uploads/
+.DS_Store
