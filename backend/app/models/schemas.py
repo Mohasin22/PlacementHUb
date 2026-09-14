@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional, Any
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 # Auth schemas
@@ -25,6 +25,7 @@ class TokenResponse(BaseModel):
     institution_id: str
     user_id: str
     user_name: str
+    requires_password_setup: bool = False
 
 # Academic Hierarchy Setup schemas
 class DepartmentCreate(BaseModel):
@@ -33,7 +34,10 @@ class DepartmentCreate(BaseModel):
 
 class ProgramCreate(BaseModel):
     name: str
-    departments: List[DepartmentCreate]
+    code: Optional[str] = None
+    duration_years: int = 4
+    total_semesters: int = 8
+    departments: List[DepartmentCreate] = []
 
 class DeanCreate(BaseModel):
     name: str
@@ -49,6 +53,43 @@ class InstitutionOnboardRequest(BaseModel):
     logo_url: Optional[str] = None
     programs: List[ProgramCreate]
     dean: DeanCreate
+
+# Academic Batch & Calendar Schemas
+class AcademicBatchCreate(BaseModel):
+    program_id: str
+    admission_year: int
+    expected_graduation_year: int
+    batch_label: Optional[str] = None
+
+class SemesterPeriodSchema(BaseModel):
+    semester_type: str = "Odd"  # "Odd" or "Even"
+    start_date: str             # YYYY-MM-DD
+    end_date: str               # YYYY-MM-DD
+
+class AcademicCalendarCreate(BaseModel):
+    academic_year_label: str  # e.g. "2026-27"
+    start_date: str           # YYYY-MM-DD
+    end_date: str             # YYYY-MM-DD
+    active: bool = True
+    semester_periods: List[SemesterPeriodSchema] = []
+
+class AcademicStatusOverridePayload(BaseModel):
+    study_year: Optional[int] = None
+    semester: Optional[int] = None
+    academic_year_label: Optional[str] = None
+    reason: str
+
+class ProgramStructureUpdate(BaseModel):
+    duration_years: int
+    total_semesters: int
+    code: Optional[str] = None
+
+class ClassSectionCreate(BaseModel):
+    program_id: str
+    department_id: str
+    academic_batch_id: str
+    section_name: str
+    faculty_coordinator_id: Optional[str] = None
 
 # Database Entity representations (for API responses)
 class InstitutionResponse(BaseModel):

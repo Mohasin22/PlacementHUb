@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ChangePassword } from '../components/ChangePassword';
 
 const API = 'http://localhost:8000/api';
 
@@ -184,6 +185,8 @@ export const UserProfile: React.FC<UserProfileProps> = ({ token }) => {
             </button>
           </div>
         </form>
+
+        <ChangePassword token={token} />
       </div>
     </div>
   );

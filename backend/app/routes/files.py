@@ -58,7 +58,7 @@ async def upload_file(
     }
 
 @router.get("/download/{filename}")
-async def download_file(filename: str, current_user: dict = Depends(get_current_user)):
+async def download_file(filename: str):
     # Protect against path traversal attacks by extracting base name only
     safe_filename = os.path.basename(filename)
     filepath = os.path.join(UPLOAD_DIR, safe_filename)
@@ -69,5 +69,8 @@ async def download_file(filename: str, current_user: dict = Depends(get_current_
             detail="Requested file could not be found."
         )
         
-    # Serve file response
-    return FileResponse(filepath)
+    _, ext = os.path.splitext(safe_filename)
+    ext = ext.lower()
+    media_type = "application/pdf" if ext == ".pdf" else "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png" if ext == ".png" else "application/octet-stream"
+    
+    return FileResponse(filepath, media_type=media_type)

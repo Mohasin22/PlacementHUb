@@ -5,6 +5,69 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── CSS Variables (Light Mode defaults) ─────────────────────────────────── */
+:root {
+  --bg-main: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --border-color: rgba(0,0,0,0.08);
+  --card-bg: #FFFFFF;
+  --input-bg: #F9FAFB;
+}
+
+[data-theme="dark"] {
+  --bg-main: #0F172A;
+  --bg-surface: #1E293B;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --border-color: rgba(255,255,255,0.08);
+  --card-bg: #1E293B;
+  --input-bg: #0F172A;
+  color-scheme: dark;
+}
+
+/* ── Dark mode overrides for Tailwind components ───────────────────────────── */
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-surface-container-lowest,
+[data-theme="dark"] .bg-background {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .bg-surface-container-low,
+[data-theme="dark"] .bg-surface-container-high {
+  background-color: rgba(255,255,255,0.05) !important;
+}
+[data-theme="dark"] .text-on-surface { color: var(--text-primary) !important; }
+[data-theme="dark"] .text-on-surface-variant { color: var(--text-secondary) !important; }
+[data-theme="dark"] .border-outline-variant { border-color: var(--border-color) !important; }
+[data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
+  background-color: var(--input-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+[data-theme="dark"] .card-shadow {
+  border-color: var(--border-color) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes progressFill { from { width: 0; } to { width: var(--target-width, 100%); } }
+
+.animate-spin { animation: spin 0.8s linear infinite; }
+.animate-fade-in { animation: fadeIn 0.3s ease-out both; }
+.animate-fade-in-up { animation: fadeInUp 0.4s ease-out both; }
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-slide-down { animation: slideDown 0.25s ease-out both; }
+.animate-pulse { animation: pulse 1.5s ease-in-out infinite; }
+
+/* ── Utility Classes ──────────────────────────────────────────────────────── */
 @layer utilities {
   .clerk-shadow {
     box-shadow: 0px 1px 1px rgba(0, 0, 0, 0.04), 0px 4px 8px rgba(0, 0, 0, 0.04);
@@ -29,7 +92,111 @@
   }
 }
 
+/* ── Mobile Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Reduce header padding on mobile */
+  header[style*="sticky"] {
+    padding: 10px 16px !important;
+  }
+  /* Give main content bottom padding for mobile nav */
+  .mobile-bottom-nav ~ * main,
+  main {
+    padding-bottom: 80px;
+  }
+  /* Stack elements on small screens */
+  .bento-grid {
+    grid-template-columns: 1fr !important;
+  }
+  /* Hide desktop-only elements */
+  .username-desktop {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  /* Hide mobile bottom nav on desktop */
+  .mobile-bottom-nav {
+    display: none !important;
+  }
+}
+
+/* ── Material Symbols ────────────────────────────────────────────────────── */
 .material-symbols-outlined {
-    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-    vertical-align: middle;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+/* ── Scrollbar styling ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
+
+/* ── Smooth transitions globally ─────────────────────────────────────────── */
+*, *::before, *::after {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+  box-sizing: border-box;
+}
+
+/* ── Print Styles for Resume Builder ──────────────────────────────────────── */
+@media print {
+  /* Hide everything by default when printing */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Only show the resume print container and its children */
+  #resume-print-container, #resume-print-container * {
+    visibility: visible;
+  }
+  
+  #resume-print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Force background colors to print if needed */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+.btn-primary {
+  background-color: #2563EB;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: #1D4ED8;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: #F3F4F6;
+  color: #374151;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #D1D5DB;
+  transition: all 0.2s ease;
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: #E5E7EB;
 }

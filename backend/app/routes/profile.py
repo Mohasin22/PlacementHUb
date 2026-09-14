@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.db.tenant import get_current_user, get_tenant_id
 from app.db.connection import db
-from bson import ObjectId
+from app.db.utils import id_query, parse_id
 import datetime
 
 router = APIRouter()
@@ -22,17 +22,17 @@ async def get_my_profile(current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
     
     if role == "Student":
-        student = await db.db.students.find_one({"_id": ObjectId(user_id)})
+        student = await db.db.students.find_one(id_query(user_id))
         if not student:
             raise HTTPException(status_code=404, detail="Student profile not found.")
         return {
-            "id": str(student["_id"]),
+            "id": str(student.get("_id", student.get("id"))),
             "role": role,
             "name": student.get("name"),
             "phone": student.get("mobile") or student.get("phone"),
             "bio": student.get("bio"),
-            "personal_email": student.get("emails", {}).get("personal") or student.get("personal_email"),
-            "institute_email": student.get("emails", {}).get("institute") or student.get("institute_email"),
+            "personal_email": student.get("emails", {}).get("personal") if isinstance(student.get("emails"), dict) else student.get("personal_email"),
+            "institute_email": student.get("emails", {}).get("institute") if isinstance(student.get("emails"), dict) else student.get("institute_email"),
             "photo_url": student.get("photo_url"),
             "program_name": student.get("program_name"),
             "department_name": student.get("department_name"),
@@ -40,11 +40,11 @@ async def get_my_profile(current_user: dict = Depends(get_current_user)):
         }
     else:
         # Dean, TPO, Faculty
-        user = await db.db.users.find_one({"_id": ObjectId(user_id)})
+        user = await db.db.users.find_one(id_query(user_id))
         if not user:
             raise HTTPException(status_code=404, detail="User profile not found.")
         return {
-            "id": str(user["_id"]),
+            "id": str(user.get("_id", user.get("id"))),
             "role": role,
             "name": user.get("name"),
             "phone": user.get("phone"),
@@ -78,13 +78,13 @@ async def update_my_profile(payload: ProfileUpdatePayload, current_user: dict = 
             
         if update_data:
             update_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
-            await db.db.students.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
+            await db.db.students.update_one(id_query(user_id), {"$set": update_data})
     else:
         if payload.personal_email is not None: update_data["personal_email"] = payload.personal_email
         if payload.institute_email is not None: update_data["email"] = payload.institute_email
         
         if update_data:
             update_data["updated_at"] = datetime.datetime.now(datetime.timezone.utc)
-            await db.db.users.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
+            await db.db.users.update_one(id_query(user_id), {"$set": update_data})
             
     return {"message": "Profile updated successfully.", "updated_fields": list(update_data.keys())}

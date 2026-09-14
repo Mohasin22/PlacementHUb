@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.connection import connect_to_mongo, close_mongo_connection
-from app.routes import auth, institution, student, faculty, drive, tpo, files, dean, profile
+from app.routes import auth, institution, student, faculty, drive, tpo, files, dean, profile, analytics, resume, academic
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -47,13 +47,18 @@ async def shutdown_event():
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(institution.router, prefix="/api/institutions", tags=["Institutions"])
+app.include_router(academic.router, prefix="/api/academic", tags=["Academic Hierarchy"])
 app.include_router(student.router, prefix="/api/students", tags=["Students"])
+app.include_router(student.bulk_router, prefix="/api/bulk-students", tags=["Bulk Students"])
 app.include_router(faculty.router, prefix="/api/faculty", tags=["Faculty"])
 app.include_router(drive.router, prefix="/api/drives", tags=["Drives"])
 app.include_router(tpo.router, prefix="/api/tpo", tags=["TPO"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
 app.include_router(dean.router, prefix="/api/dean", tags=["Dean"])
+app.include_router(dean.router, prefix="/api", tags=["Notifications"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+app.include_router(analytics.router, prefix="/api/tpo/analytics", tags=["Analytics"])
+app.include_router(resume.router, prefix="/api/resume", tags=["Resume Intelligence"])
 
 
 @app.get("/")

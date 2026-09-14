@@ -111,33 +111,72 @@ async def onboard_institution(payload: InstitutionOnboardRequest):
         "dean_id": dean_id
     }
 
+from app.db.utils import id_query, parse_id
+
+@router.get("/public/hierarchy")
+async def get_public_hierarchy():
+    # Fetch the first institution (assuming single-tenant or default tenant for public registration)
+    institution = await db.db.institutions.find_one({})
+    if not institution:
+        raise HTTPException(status_code=404, detail="No institution found.")
+        
+    institution_id = institution.get("id") or str(institution["_id"])
+    return await get_institution_hierarchy(institution_id)
+
 @router.get("/{institution_id}/hierarchy")
 async def get_institution_hierarchy(institution_id: str):
-    # Fetch programs, departments, and classes for this institution
-    programs_cursor = db.db.programs.find({"institution_id": institution_id})
+    # Fetch programs, batches, departments, and classes for this institution
+    programs_cursor = db.db.programs.find({"$or": [{"institution_id": institution_id}, {"institution_id": parse_id(institution_id)}]})
     programs = await programs_cursor.to_list(length=100)
     
     hierarchy = []
     for prog in programs:
-        prog_id = str(prog["_id"])
-        depts_cursor = db.db.departments.find({"program_id": prog_id, "institution_id": institution_id})
+        prog_id = prog.get("id") or str(prog["_id"])
+        prog_obj_id = str(prog["_id"])
+
+        # Fetch academic batches for this program
+        batches_cursor = db.db.academic_batches.find({
+            "$or": [{"program_id": prog_id}, {"program_id": prog_obj_id}]
+        }).sort("admission_year", -1)
+        batches = await batches_cursor.to_list(length=50)
+        batches_data = [{"id": str(b.get("id") or b["_id"]), "batch_label": b.get("batch_label"), "admission_year": b.get("admission_year"), "expected_graduation_year": b.get("expected_graduation_year")} for b in batches]
+
+        depts_cursor = db.db.departments.find({
+            "$or": [{"program_id": prog_id}, {"program_id": prog_obj_id}]
+        })
         depts = await depts_cursor.to_list(length=100)
         
         departments_data = []
         for dept in depts:
-            dept_id = str(dept["_id"])
-            classes_cursor = db.db.classes.find({"department_id": dept_id, "institution_id": institution_id})
+            dept_id = dept.get("id") or str(dept["_id"])
+            dept_obj_id = str(dept["_id"])
+            classes_cursor = db.db.classes.find({
+                "$or": [{"department_id": dept_id}, {"department_id": dept_obj_id}]
+            })
             classes = await classes_cursor.to_list(length=100)
             
             departments_data.append({
                 "id": dept_id,
-                "name": dept["department_name"],
-                "classes": [{"id": str(c["_id"]), "name": c["class_name"]} for c in classes]
+                "name": dept.get("department_name") or dept.get("name", "Unknown"),
+                "classes": [
+                    {
+                        "id": str(c.get("id") or c["_id"]),
+                        "name": c.get("display_name") or c.get("class_name") or c.get("name", "Unknown"),
+                        "section_name": c.get("section_name") or c.get("class_name"),
+                        "academic_batch_id": str(c.get("academic_batch_id") or ""),
+                        "faculty_coordinator_id": str(c.get("faculty_coordinator_id") or "")
+                    }
+                    for c in classes
+                ]
             })
             
         hierarchy.append({
             "id": prog_id,
-            "name": prog["program_name"],
+            "name": prog.get("program_name") or prog.get("name", "Unknown"),
+            "code": prog.get("code"),
+            "duration_years": int(prog.get("duration_years") or 4),
+            "total_semesters": int(prog.get("total_semesters") or 8),
+            "batches": batches_data,
             "departments": departments_data
         })
         
@@ -146,7 +185,7 @@ async def get_institution_hierarchy(institution_id: str):
 @router.post("/tpo", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RoleChecker(["Dean"]))])
 async def register_tpo(payload: TpoRegisterPayload, institution_id: str = Depends(get_tenant_id)):
     # Verify program exists
-    prog = await db.db.programs.find_one({"_id": ObjectId(payload.program_id), "institution_id": institution_id})
+    prog = await db.db.programs.find_one(id_query(payload.program_id))
     if not prog:
         raise HTTPException(status_code=404, detail="Program not found under this institution.")
         

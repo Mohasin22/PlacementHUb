@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = 'http://127.0.0.1:8000/api';
 
 interface Department {
   name: string;
@@ -58,27 +58,38 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess }) => {
   const [deanPassword, setDeanPassword] = useState('');
   const [deanPhone, setDeanPhone] = useState('');
 
+  // Derived helper references
+  const currentProgram = programs[activeProgIdx];
+  const currentDepartment = currentProgram?.departments[activeDeptIdx];
+
   // Hierarchy Helpers
   const addProgram = () => {
-    if (!newProgName.trim()) return;
-    setPrograms([...programs, { name: newProgName.trim(), departments: [] }]);
+    const name = newProgName.trim();
+    if (!name) return;
+    const newProgList = [...programs, { name, departments: [] }];
+    setPrograms(newProgList);
     setNewProgName('');
-    setActiveProgIdx(programs.length); // Focus new program
+    setActiveProgIdx(newProgList.length - 1);
+    setActiveDeptIdx(0);
   };
 
   const addDepartment = () => {
-    if (!newDeptName.trim() || activeProgIdx === -1) return;
+    const name = newDeptName.trim();
+    if (!name || activeProgIdx < 0 || activeProgIdx >= programs.length) return;
     const updated = [...programs];
-    updated[activeProgIdx].departments.push({ name: newDeptName.trim(), classes: [] });
+    updated[activeProgIdx].departments.push({ name, classes: [] });
     setPrograms(updated);
     setNewDeptName('');
     setActiveDeptIdx(updated[activeProgIdx].departments.length - 1);
   };
 
   const addClass = () => {
-    if (!newClassName.trim() || activeProgIdx === -1 || activeDeptIdx === -1) return;
+    const name = newClassName.trim();
+    if (!name || activeProgIdx < 0 || activeProgIdx >= programs.length) return;
+    const dept = programs[activeProgIdx]?.departments[activeDeptIdx];
+    if (!dept) return;
     const updated = [...programs];
-    updated[activeProgIdx].departments[activeDeptIdx].classes.push(newClassName.trim());
+    updated[activeProgIdx].departments[activeDeptIdx].classes.push(name);
     setPrograms(updated);
     setNewClassName('');
   };
@@ -86,7 +97,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess }) => {
   const removeProgram = (pIdx: number) => {
     const updated = programs.filter((_, idx) => idx !== pIdx);
     setPrograms(updated);
-    setActiveProgIdx(updated.length - 1);
+    if (activeProgIdx >= updated.length) {
+      setActiveProgIdx(Math.max(0, updated.length - 1));
+    }
     setActiveDeptIdx(0);
   };
 
@@ -94,7 +107,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess }) => {
     const updated = [...programs];
     updated[pIdx].departments = updated[pIdx].departments.filter((_, idx) => idx !== dIdx);
     setPrograms(updated);
-    setActiveDeptIdx(0);
+    if (activeDeptIdx >= updated[pIdx].departments.length) {
+      setActiveDeptIdx(Math.max(0, updated[pIdx].departments.length - 1));
+    }
   };
 
   const removeClass = (pIdx: number, dIdx: number, cIdx: number) => {
@@ -225,87 +240,211 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess }) => {
         {/* Step 2: Academic Structure */}
         {step === 2 && (
           <div style={styles.form}>
+            <p style={{ fontSize: '0.88rem', color: '#4B5563', margin: '0 0 12px 0' }}>
+              Build your institution's hierarchy: Add <strong>Programs</strong> (e.g. B.Tech), <strong>Departments</strong> (e.g. CSE), and <strong>Classes</strong> (e.g. CSE-A). Click a program or department to configure its items.
+            </p>
+
             <div style={styles.builderLayout}>
               {/* Programs Column */}
               <div style={styles.builderCol}>
-                <label>1. Programs (Degree)</label>
+                <label style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1F2937', marginBottom: '8px', display: 'block' }}>
+                  1. Programs ({programs.length})
+                </label>
                 <div style={styles.addItemRow}>
-                  <input type="text" placeholder="e.g. B.Tech" value={newProgName} onChange={e => setNewProgName(e.target.value)} />
-                  <button type="button" className="btn-primary" onClick={addProgram}>Add</button>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. B.Tech" 
+                    value={newProgName} 
+                    onChange={e => setNewProgName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addProgram(); } }}
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', outline: 'none' }}
+                  />
+                  <button 
+                    type="button" 
+                    className="btn-primary" 
+                    onClick={addProgram}
+                    disabled={!newProgName.trim()}
+                    style={{ padding: '8px 14px', borderRadius: '6px' }}
+                  >
+                    + Add
+                  </button>
                 </div>
                 <div style={styles.builderList}>
-                  {programs.map((prog, idx) => (
-                    <div 
-                      key={idx} 
-                      style={{
-                        ...styles.builderItem,
-                        borderColor: activeProgIdx === idx ? '#2563EB' : 'rgba(255, 255, 255, 0.05)',
-                        background: activeProgIdx === idx ? 'rgba(139, 92, 246, 0.05)' : 'transparent',
-                      }}
-                      onClick={() => { setActiveProgIdx(idx); setActiveDeptIdx(0); }}
-                    >
-                      <span>{prog.name}</span>
-                      <button type="button" style={styles.deleteMiniBtn} onClick={(e) => { e.stopPropagation(); removeProgram(idx); }}>×</button>
+                  {programs.length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
+                      No programs added yet.
                     </div>
-                  ))}
+                  ) : (
+                    programs.map((prog, idx) => {
+                      const isActive = activeProgIdx === idx;
+                      return (
+                        <div 
+                          key={idx} 
+                          style={{
+                            ...styles.builderItem,
+                            borderColor: isActive ? '#2563EB' : '#E5E7EB',
+                            background: isActive ? '#EFF6FF' : '#FFFFFF',
+                            fontWeight: isActive ? 600 : 400,
+                            color: isActive ? '#1D4ED8' : '#374151',
+                            boxShadow: isActive ? '0 0 0 1px #2563EB' : 'none'
+                          }}
+                          onClick={() => { setActiveProgIdx(idx); setActiveDeptIdx(0); }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📂 {prog.name}</span>
+                            <span style={{ fontSize: '0.72rem', background: isActive ? '#DBEAFE' : '#F3F4F6', color: isActive ? '#1E40AF' : '#6B7280', padding: '2px 6px', borderRadius: '10px' }}>
+                              {prog.departments.length} depts
+                            </span>
+                          </span>
+                          <button 
+                            type="button" 
+                            style={styles.deleteMiniBtn} 
+                            onClick={(e) => { e.stopPropagation(); removeProgram(idx); }}
+                            title="Remove Program"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
               {/* Departments Column */}
               <div style={styles.builderCol}>
-                <label>2. Departments</label>
+                <label style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1F2937', marginBottom: '8px', display: 'block' }}>
+                  2. Departments {currentProgram ? `(${currentProgram.departments.length})` : ''}
+                </label>
                 <div style={styles.addItemRow}>
-                  <input type="text" placeholder="e.g. CSE" value={newDeptName} onChange={e => setNewDeptName(e.target.value)} disabled={programs.length === 0} />
-                  <button type="button" className="btn-primary" onClick={addDepartment} disabled={programs.length === 0}>Add</button>
+                  <input 
+                    type="text" 
+                    placeholder={currentProgram ? `Add Dept to ${currentProgram.name}...` : "Select a Program first"} 
+                    value={newDeptName} 
+                    onChange={e => setNewDeptName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDepartment(); } }}
+                    disabled={!currentProgram}
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', outline: 'none' }}
+                  />
+                  <button 
+                    type="button" 
+                    className="btn-primary" 
+                    onClick={addDepartment} 
+                    disabled={!currentProgram || !newDeptName.trim()}
+                    style={{ padding: '8px 14px', borderRadius: '6px' }}
+                  >
+                    + Add
+                  </button>
                 </div>
                 <div style={styles.builderList}>
-                  {programs[activeProgIdx]?.departments.map((dept, idx) => (
-                    <div 
-                      key={idx} 
-                      style={{
-                        ...styles.builderItem,
-                        borderColor: activeDeptIdx === idx ? '#2563EB' : 'rgba(255, 255, 255, 0.05)',
-                        background: activeDeptIdx === idx ? 'rgba(139, 92, 246, 0.05)' : 'transparent',
-                      }}
-                      onClick={() => setActiveDeptIdx(idx)}
-                    >
-                      <span>{dept.name}</span>
-                      <button type="button" style={styles.deleteMiniBtn} onClick={(e) => { e.stopPropagation(); removeDepartment(activeProgIdx, idx); }}>×</button>
+                  {!currentProgram ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
+                      Select a program on the left to manage departments.
                     </div>
-                  ))}
+                  ) : currentProgram.departments.length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
+                      No departments in <strong>{currentProgram.name}</strong>. Add one above!
+                    </div>
+                  ) : (
+                    currentProgram.departments.map((dept, idx) => {
+                      const isActive = activeDeptIdx === idx;
+                      return (
+                        <div 
+                          key={idx} 
+                          style={{
+                            ...styles.builderItem,
+                            borderColor: isActive ? '#2563EB' : '#E5E7EB',
+                            background: isActive ? '#EFF6FF' : '#FFFFFF',
+                            fontWeight: isActive ? 600 : 400,
+                            color: isActive ? '#1D4ED8' : '#374151',
+                            boxShadow: isActive ? '0 0 0 1px #2563EB' : 'none'
+                          }}
+                          onClick={() => setActiveDeptIdx(idx)}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📁 {dept.name}</span>
+                            <span style={{ fontSize: '0.72rem', background: isActive ? '#DBEAFE' : '#F3F4F6', color: isActive ? '#1E40AF' : '#6B7280', padding: '2px 6px', borderRadius: '10px' }}>
+                              {dept.classes.length} classes
+                            </span>
+                          </span>
+                          <button 
+                            type="button" 
+                            style={styles.deleteMiniBtn} 
+                            onClick={(e) => { e.stopPropagation(); removeDepartment(activeProgIdx, idx); }}
+                            title="Remove Department"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
               {/* Classes Column */}
               <div style={styles.builderCol}>
-                <label>3. Classes</label>
+                <label style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1F2937', marginBottom: '8px', display: 'block' }}>
+                  3. Classes {currentDepartment ? `(${currentDepartment.classes.length})` : ''}
+                </label>
                 <div style={styles.addItemRow}>
                   <input 
                     type="text" 
-                    placeholder="e.g. CSE-A" 
+                    placeholder={currentDepartment ? `Add Class to ${currentDepartment.name}...` : "Select a Department first"} 
                     value={newClassName} 
                     onChange={e => setNewClassName(e.target.value)} 
-                    disabled={programs.length === 0 || !programs[activeProgIdx]?.departments[activeDeptIdx]} 
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addClass(); } }}
+                    disabled={!currentDepartment}
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', outline: 'none' }}
                   />
                   <button 
                     type="button" 
                     className="btn-primary" 
                     onClick={addClass} 
-                    disabled={programs.length === 0 || !programs[activeProgIdx]?.departments[activeDeptIdx]}
+                    disabled={!currentDepartment || !newClassName.trim()}
+                    style={{ padding: '8px 14px', borderRadius: '6px' }}
                   >
-                    Add
+                    + Add
                   </button>
                 </div>
                 <div style={styles.builderList}>
-                  {programs[activeProgIdx]?.departments[activeDeptIdx]?.classes.map((cls, idx) => (
-                    <div key={idx} style={styles.builderItem}>
-                      <span>{cls}</span>
-                      <button type="button" style={styles.deleteMiniBtn} onClick={() => removeClass(activeProgIdx, activeDeptIdx, idx)}>×</button>
+                  {!currentDepartment ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
+                      Select a department to manage classes.
                     </div>
-                  ))}
+                  ) : currentDepartment.classes.length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
+                      No classes in <strong>{currentDepartment.name}</strong>. Add one above!
+                    </div>
+                  ) : (
+                    currentDepartment.classes.map((cls, idx) => (
+                      <div key={idx} style={{ ...styles.builderItem, cursor: 'default', background: '#FFFFFF', borderColor: '#E5E7EB' }}>
+                        <span>🏫 {cls}</span>
+                        <button 
+                          type="button" 
+                          style={styles.deleteMiniBtn} 
+                          onClick={() => removeClass(activeProgIdx, activeDeptIdx, idx)}
+                          title="Remove Class"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
+
+            {/* Validation tip banner if disabled */}
+            {programs.length === 0 ? (
+              <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', padding: '10px 14px', borderRadius: '8px', fontSize: '0.85rem' }}>
+                <strong>Tip:</strong> Add at least one program (degree) to begin setting up your institution's departments and classes.
+              </div>
+            ) : programs.some(p => p.departments.length === 0) ? (
+              <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', color: '#92400E', padding: '10px 14px', borderRadius: '8px', fontSize: '0.85rem' }}>
+                <strong>Note:</strong> Every program must have at least one department defined to proceed. (Program missing departments: <strong>{programs.filter(p => p.departments.length === 0).map(p => p.name).join(', ')}</strong>)
+              </div>
+            ) : null}
 
             <div style={styles.actions}>
               <button className="btn-secondary" onClick={() => setStep(1)}>Back</button>
@@ -314,7 +453,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess }) => {
                 onClick={() => setStep(3)}
                 disabled={programs.length === 0 || programs.some(p => p.departments.length === 0)}
               >
-                Define Administrator
+                Define Administrator →
               </button>
             </div>
           </div>
