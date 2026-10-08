@@ -56,6 +56,13 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Validation report state
+  const [validationReport, setValidationReport] = useState<any | null>(null);
+
+  // Backlog history state
+  const [backlogHistory, setBacklogHistory] = useState<any[]>([]);
+  const [showBacklogHistory, setShowBacklogHistory] = useState(false);
+
   // Edit fields state
   const [mobile, setMobile] = useState('');
   const [personalEmail, setPersonalEmail] = useState('');
@@ -68,7 +75,30 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
 
   useEffect(() => {
     fetchProfile();
+    fetchValidationReport();
+    fetchBacklogHistory();
   }, []);
+
+  const fetchValidationReport = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/students/profile/validation-report`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setValidationReport(await res.json());
+    } catch { }
+  };
+
+  const fetchBacklogHistory = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/students/profile/backlog-history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setBacklogHistory(d.backlog_history || d || []);
+      }
+    } catch { }
+  };
 
   const fetchProfile = async () => {
     setIsLoading(true);
@@ -291,6 +321,66 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', paddingBottom: 60 }}>
+
+      {/* ── CHANGES REQUESTED NOTICE BANNER ─────────────────────────────────── */}
+      {profile?.review_status === 'CHANGES_REQUESTED' && profile?.review_note && (
+        <div style={{
+          background: 'rgba(245,158,11,0.1)',
+          border: '1px solid rgba(245,158,11,0.4)',
+          borderRadius: 14,
+          padding: '16px 20px',
+          marginBottom: 16,
+          display: 'flex',
+          gap: 14,
+          alignItems: 'flex-start',
+        }}>
+          <AlertCircleIcon size={22} color="#FBBF24" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <div style={{ fontWeight: 700, color: '#FBBF24', fontSize: '0.95rem', marginBottom: 4 }}>
+              ⚠ Faculty Has Requested Data Corrections
+            </div>
+            <div style={{ color: '#FDE68A', fontSize: '0.85rem', lineHeight: 1.6 }}>
+              {profile.review_note}
+            </div>
+            <div style={{ marginTop: 10, color: 'rgba(253,230,138,0.7)', fontSize: '0.78rem' }}>
+              Please update the relevant fields and resubmit your profile for verification.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MISSING DATA VALIDATION BANNER ──────────────────────────────────── */}
+      {validationReport && (
+        (validationReport.errors?.length > 0 || validationReport.warnings?.length > 0 || validationReport.missing_fields?.length > 0)
+      ) && (
+        <div style={{
+          background: 'rgba(239,68,68,0.06)',
+          border: '1px solid rgba(239,68,68,0.25)',
+          borderRadius: 14,
+          padding: '16px 20px',
+          marginBottom: 16,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <AlertCircleIcon size={20} color="#F87171" />
+            <span style={{ fontWeight: 700, color: '#F87171', fontSize: '0.92rem' }}>Profile Validation Issues Detected</span>
+            <span style={{ marginLeft: 'auto', color: '#F87171', fontSize: '0.8rem' }}>
+              Complete your profile to improve placement eligibility.
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {(validationReport.errors || []).map((e: string, i: number) => (
+              <span key={i} style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 700 }}>❌ {e}</span>
+            ))}
+            {(validationReport.warnings || []).map((w: string, i: number) => (
+              <span key={i} style={{ background: 'rgba(245,158,11,0.12)', color: '#FBBF24', padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 700 }}>⚠️ {w}</span>
+            ))}
+            {(validationReport.missing_fields || []).map((f: string, i: number) => (
+              <span key={i} style={{ background: 'rgba(156,163,175,0.1)', color: '#9CA3AF', padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 700 }}>🔲 Missing: {f}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── HEADER BANNER ─────────────────────────────────────────────────── */}
       <div
         style={{
@@ -567,6 +657,49 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               </div>
             </div>
           </div>
+
+          {/* Backlog History Toggle */}
+          {backlogHistory.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <button
+                onClick={() => setShowBacklogHistory(prev => !prev)}
+                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', color: '#60A5FA', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                📋 {showBacklogHistory ? 'Hide' : 'View'} Backlog History ({backlogHistory.length} subject{backlogHistory.length !== 1 ? 's' : ''})
+              </button>
+
+              {showBacklogHistory && (
+                <div style={{ marginTop: 12, overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-main)' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Subject</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Semester</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Attempts</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cleared Sem</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {backlogHistory.map((bl: any, i: number) => (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border-color)', background: i % 2 === 0 ? 'transparent' : 'var(--bg-main)' }}>
+                          <td style={{ padding: '8px 12px', color: 'var(--text-primary)', fontWeight: 600 }}>{bl.subject_name || bl.subject_code || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Sem {bl.semester || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{bl.attempts ?? 1}</td>
+                          <td style={{ padding: '8px 12px' }}>
+                            <span style={{ background: bl.status === 'ACTIVE' ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)', color: bl.status === 'ACTIVE' ? '#F87171' : '#34D399', padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700 }}>
+                              {bl.status === 'ACTIVE' ? '⚠ Active' : '✓ Cleared'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{bl.clearing_semester ? `Sem ${bl.clearing_semester}` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={() => {

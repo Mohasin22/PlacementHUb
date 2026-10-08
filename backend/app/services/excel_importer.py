@@ -22,6 +22,7 @@ from app.services.academic_timeline_service import (
     get_student_academic_status, get_or_create_academic_batch, get_or_create_class_section,
     ensure_default_academic_calendar
 )
+from app.services.duplicate_detection_service import DuplicateDetectionService
 
 STANDARD_TEMPLATE_HEADERS = [
     "Student ID / Roll Number", "Full Name", "First Name", "Middle Name", "Last Name",
@@ -608,6 +609,19 @@ async def process_excel_import(
             )
         )
 
+        # Duplicate detection check
+        dup_res = await DuplicateDetectionService.check_duplicate(
+            institution_id=institution_id,
+            student_data={
+                "roll_number": roll_no,
+                "institute_email": inst_email,
+                "personal_email": personal_email,
+                "mobile": mobile
+            }
+        )
+        if dup_res["is_duplicate"]:
+            row_issues.append(f"Possible duplicate student detected: matching {', '.join(dup_res['matched_fields'])}")
+
         canonical_records.append(student_obj)
 
         if row_issues:
@@ -626,6 +640,24 @@ async def process_excel_import(
         for student in canonical_records:
             mongo_doc = student.to_mongo_dict()
             
+            # Check for duplicate warning before saving
+            dup_res = await DuplicateDetectionService.check_duplicate(
+                institution_id=institution_id,
+                student_data={
+                    "roll_number": student.student_id,
+                    "institute_email": student.contact.institutional_email,
+                    "personal_email": student.contact.personal_email,
+                    "mobile": student.contact.mobile
+                }
+            )
+            if dup_res["is_duplicate"]:
+                await DuplicateDetectionService.record_duplicate_warning(
+                    institution_id=institution_id,
+                    detection_result=dup_res,
+                    source="excel_import",
+                    source_details={"source_file": source_filename, "batch_id": batch_id}
+                )
+
             filter_query = {
                 "institution_id": institution_id,
                 "$or": [

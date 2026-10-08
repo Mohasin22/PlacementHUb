@@ -13,10 +13,14 @@ import io
 
 router = APIRouter()
 
-VALID_STATUSES = ["Applied", "Shortlisted", "On-Hold", "Rejected", "Placed", "Selected"]
+VALID_STATUSES = ["Applied", "Shortlisted", "Selected", "Cancelled", "Placed", "Rejected", "On-Hold"]
 
 class ApplicationStatusUpdate(BaseModel):
     status: str
+    reason: Optional[str] = None
+
+class CancelSelectionPayload(BaseModel):
+    reason: Optional[str] = "Selection cancelled by TPO"
 
 class ExportFieldsPayload(BaseModel):
     fields: Optional[List[str]] = None
@@ -346,6 +350,7 @@ async def get_drive_applications(
             "skills": skills,
             "applied_at": app.get("applied_at"),
             "status": app.get("status", "Applied"),
+            "status_history": app.get("status_history", []),
             "offer_letter_url": app.get("offer_letter_url"),
             "ctc_offered": app.get("ctc_offered"),
             "profile_snapshot": p_snap,
@@ -354,7 +359,8 @@ async def get_drive_applications(
         
     return app_details
 
-# ── Application Status Updates ───────────────────────────────────────────────
+# ── Application Status Updates & Selection Workflow ──────────────────────────
+
 @router.post("/applications/{application_id}/status", dependencies=[Depends(RoleChecker(["TPO"]))])
 async def update_application_status(
     application_id: str,
@@ -367,10 +373,21 @@ async def update_application_status(
     app = await db.db.applications.find_one(id_query(application_id))
     if not app:
         raise HTTPException(status_code=404, detail="Application record not found.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    history_entry = {
+        "status": payload.status,
+        "timestamp": now_iso,
+        "changed_by": current_user["email"],
+        "reason": payload.reason or f"Status transitioned to {payload.status}"
+    }
         
     await db.db.applications.update_one(
         id_query(application_id),
-        {"$set": {"status": payload.status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {
+            "$set": {"status": payload.status, "updated_at": now_iso},
+            "$push": {"status_history": history_entry}
+        }
     )
     
     await log_audit_event(
@@ -380,10 +397,178 @@ async def update_application_status(
         entity_type="Application",
         entity_id=application_id,
         institution_id=institution_id,
-        new_value=payload.status
+        old_value=app.get("status"),
+        new_value=payload.status,
+        details={"reason": payload.reason}
     )
     
     return {"message": f"Application status updated to {payload.status}."}
+
+@router.post("/applications/{application_id}/select", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def select_application(
+    application_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Marks student application as 'Selected' and records in status history."""
+    app = await db.db.applications.find_one(id_query(application_id))
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    history_entry = {
+        "status": "Selected",
+        "timestamp": now_iso,
+        "changed_by": current_user["email"],
+        "reason": "Selected for placement"
+    }
+
+    await db.db.applications.update_one(
+        id_query(application_id),
+        {
+            "$set": {"status": "Selected", "updated_at": now_iso},
+            "$push": {"status_history": history_entry}
+        }
+    )
+
+    await log_audit_event(
+        action="application_selected",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="Application",
+        entity_id=application_id,
+        institution_id=institution_id,
+        old_value=app.get("status"),
+        new_value="Selected"
+    )
+
+    return {"message": "Student application marked as Selected.", "status": "Selected"}
+
+@router.post("/applications/{application_id}/cancel-selection", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def cancel_application_selection(
+    application_id: str,
+    payload: Optional[CancelSelectionPayload] = None,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """
+    Cancels student selection without deleting the record.
+    Marks status as 'Cancelled' and records reason in status history.
+    """
+    app = await db.db.applications.find_one(id_query(application_id))
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    reason = payload.reason if payload and payload.reason else "Selection cancelled by TPO"
+    history_entry = {
+        "status": "Cancelled",
+        "timestamp": now_iso,
+        "changed_by": current_user["email"],
+        "reason": reason
+    }
+
+    await db.db.applications.update_one(
+        id_query(application_id),
+        {
+            "$set": {"status": "Cancelled", "updated_at": now_iso},
+            "$push": {"status_history": history_entry}
+        }
+    )
+
+    await log_audit_event(
+        action="application_selection_cancelled",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="Application",
+        entity_id=application_id,
+        institution_id=institution_id,
+        old_value=app.get("status"),
+        new_value="Cancelled",
+        details={"reason": reason}
+    )
+
+    return {"message": "Student selection cancelled.", "status": "Cancelled"}
+
+@router.post("/drives/{drive_id}/bulk-select", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def bulk_select_applications(
+    drive_id: str,
+    payload: BulkStatusUpdate,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Bulk marks multiple applications as 'Selected'."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updated = 0
+    history_entry = {
+        "status": "Selected",
+        "timestamp": now_iso,
+        "changed_by": current_user["email"],
+        "reason": "Bulk selection"
+    }
+
+    for app_id in payload.application_ids:
+        res = await db.db.applications.update_one(
+            id_query(app_id),
+            {
+                "$set": {"status": "Selected", "updated_at": now_iso},
+                "$push": {"status_history": history_entry}
+            }
+        )
+        if res.modified_count:
+            updated += 1
+
+    await log_audit_event(
+        action="bulk_applications_selected",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="PlacementDrive",
+        entity_id=drive_id,
+        institution_id=institution_id,
+        details={"count": updated}
+    )
+
+    return {"message": f"{updated} application(s) selected.", "updated_count": updated}
+
+@router.post("/drives/{drive_id}/bulk-cancel-selection", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def bulk_cancel_selection_applications(
+    drive_id: str,
+    payload: BulkStatusUpdate,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Bulk cancels selection for multiple applications without deleting records."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updated = 0
+    history_entry = {
+        "status": "Cancelled",
+        "timestamp": now_iso,
+        "changed_by": current_user["email"],
+        "reason": "Bulk selection cancellation"
+    }
+
+    for app_id in payload.application_ids:
+        res = await db.db.applications.update_one(
+            id_query(app_id),
+            {
+                "$set": {"status": "Cancelled", "updated_at": now_iso},
+                "$push": {"status_history": history_entry}
+            }
+        )
+        if res.modified_count:
+            updated += 1
+
+    await log_audit_event(
+        action="bulk_applications_cancelled",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="PlacementDrive",
+        entity_id=drive_id,
+        institution_id=institution_id,
+        details={"count": updated}
+    )
+
+    return {"message": f"{updated} selection(s) cancelled.", "updated_count": updated}
 
 @router.post("/drives/{drive_id}/bulk-status", dependencies=[Depends(RoleChecker(["TPO"]))])
 async def bulk_update_status(
@@ -397,12 +582,23 @@ async def bulk_update_status(
     if not payload.application_ids:
         raise HTTPException(status_code=400, detail="No application IDs provided.")
         
+    now_iso = datetime.now(timezone.utc).isoformat()
+    history_entry = {
+        "status": payload.status,
+        "timestamp": now_iso,
+        "changed_by": current_user["email"],
+        "reason": f"Bulk status update to {payload.status}"
+    }
+
     updated = 0
     for app_id in payload.application_ids:
         try:
             res = await db.db.applications.update_one(
                 id_query(app_id),
-                {"$set": {"status": payload.status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                {
+                    "$set": {"status": payload.status, "updated_at": now_iso},
+                    "$push": {"status_history": history_entry}
+                }
             )
             if res.modified_count:
                 updated += 1

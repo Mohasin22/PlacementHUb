@@ -19,6 +19,7 @@ import {
   CloseIcon,
   PhoneIcon,
 } from '../components/Icons';
+import { getSafeUrl } from '../utils/safeUrl';
 
 const API = 'http://localhost:8000/api';
 
@@ -32,12 +33,14 @@ interface TpoDashboardProps {
 
 type Tab = 'drives' | 'analytics' | 'events' | 'create' | 'applicants' | 'export' | 'upload' | 'faculty' | 'students';
 
-const STATUS_OPTS = ['Applied', 'Shortlisted', 'On-Hold', 'Rejected', 'Placed'];
+const STATUS_OPTS = ['Applied', 'Shortlisted', 'Selected', 'On-Hold', 'Rejected', 'Cancelled', 'Placed'];
 const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   Applied: { bg: 'rgba(59,130,246,0.15)', color: '#60A5FA' },
   Shortlisted: { bg: 'rgba(245,158,11,0.15)', color: '#FBBF24' },
+  Selected: { bg: 'rgba(16,185,129,0.2)', color: '#10B981' },
   Placed: { bg: 'rgba(16,185,129,0.15)', color: '#34D399' },
   Rejected: { bg: 'rgba(239,68,68,0.12)', color: '#F87171' },
+  Cancelled: { bg: 'rgba(239,68,68,0.18)', color: '#F87171' },
   'On-Hold': { bg: 'rgba(156,163,175,0.1)', color: '#6B7280' },
 };
 const ALL_EXPORT_FIELDS = [
@@ -102,6 +105,11 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
   const [_tpoProgramName, setTpoProgramName] = useState<string>('');
   const [facultyDeptId, setFacultyDeptId] = useState<string>('');
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  // ── Duplicate Detection State ─────────────────────────────────────────────
+  const [duplicates, setDuplicates] = useState<any[]>([]);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [duplicatesLoading, setDuplicatesLoading] = useState(false);
 
   // ── HR Analytics State ───────────────────────────────────────────────────
   const [hrExcelFile, setHrExcelFile] = useState<File | null>(null);
@@ -212,8 +220,55 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     else flash('Update failed.', false);
   };
 
+  const handleSelectApplicant = async (appId: string, _studentId: string) => {
+    if (!selectedDrive) return;
+    if (!window.confirm('Mark this student as Selected for this drive?')) return;
+    const res = await fetch(`${API}/tpo/applications/${appId}/select`, {
+      method: 'POST', headers: h,
+    });
+    if (res.ok) { flash('Student selected!'); loadApplicants(selectedDrive.id); }
+    else {
+      const d = await res.json();
+      flash(d.detail || 'Failed to select student.', false);
+    }
+  };
+
+  const handleCancelSelection = async (appId: string, _studentId: string) => {
+    if (!selectedDrive) return;
+    if (!window.confirm('Cancel this student\'s selection? Their application status will be set to Cancelled.')) return;
+    const res = await fetch(`${API}/tpo/applications/${appId}/cancel-selection`, {
+      method: 'POST', headers: h,
+      body: JSON.stringify({ reason: 'Cancelled by TPO' }),
+    });
+    if (res.ok) { flash('Selection cancelled.'); loadApplicants(selectedDrive.id); }
+    else {
+      const d = await res.json();
+      flash(d.detail || 'Failed to cancel selection.', false);
+    }
+  };
+
   const bulkUpdate = async (status: string) => {
     if (!selected.length) return;
+    if (status === 'Selected') {
+      if (!window.confirm(`Bulk select ${selected.length} student(s)?`)) return;
+      const res = await fetch(`${API}/tpo/drives/${selectedDrive.id}/bulk-select`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ application_ids: selected, status: 'Selected' }),
+      });
+      if (res.ok) { flash(`Selected ${selected.length} student(s)`); loadApplicants(selectedDrive.id); setSelected([]); }
+      else flash('Bulk select failed.', false);
+      return;
+    }
+    if (status === 'Cancelled') {
+      if (!window.confirm(`Cancel selection for ${selected.length} student(s)?`)) return;
+      const res = await fetch(`${API}/tpo/drives/${selectedDrive.id}/bulk-cancel-selection`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ application_ids: selected, status: 'Cancelled' }),
+      });
+      if (res.ok) { flash(`Cancelled ${selected.length} student(s)`); loadApplicants(selectedDrive.id); setSelected([]); }
+      else flash('Bulk cancel failed.', false);
+      return;
+    }
     const res = await fetch(`${API}/tpo/drives/${selectedDrive.id}/bulk-status`, {
       method: 'POST', headers: h,
       body: JSON.stringify({ application_ids: selected, status }),
@@ -223,6 +278,37 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
       loadApplicants(selectedDrive.id);
       setSelected([]);
     } else flash('Bulk update failed.', false);
+  };
+
+  const loadDuplicates = async () => {
+    setDuplicatesLoading(true);
+    try {
+      const res = await fetch(`${API}/students/duplicates`, { headers: h });
+      if (res.ok) {
+        const data = await res.json();
+        setDuplicates(data.duplicates || []);
+      }
+    } catch (e) { }
+    finally { setDuplicatesLoading(false); }
+  };
+
+  const openDuplicatesModal = () => {
+    setShowDuplicatesModal(true);
+    loadDuplicates();
+  };
+
+  const resolveDuplicate = async (duplicateId: string, action: string) => {
+    const res = await fetch(`${API}/students/duplicates/${duplicateId}/resolve`, {
+      method: 'POST', headers: h,
+      body: JSON.stringify({ action }),
+    });
+    if (res.ok) {
+      flash('Duplicate resolved.');
+      loadDuplicates();
+    } else {
+      const d = await res.json();
+      flash(d.detail || 'Failed to resolve.', false);
+    }
   };
 
   const createDrive = async () => {
@@ -994,6 +1080,16 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
             </div>
           ) : (
             <div style={s.formCard}>
+              {/* Duplicate Students Warning Banner */}
+              <div
+                onClick={openDuplicatesModal}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 10, marginBottom: 14, cursor: 'pointer' }}
+              >
+                <AlertIcon size={18} color="#FBBF24" />
+                <span style={{ color: '#FBBF24', fontWeight: 600, fontSize: '0.85rem' }}>Duplicate Student Records Detected</span>
+                <span style={{ marginLeft: 'auto', color: '#FBBF24', fontSize: '0.8rem', fontWeight: 700, textDecoration: 'underline' }}>Review &amp; Resolve →</span>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <button onClick={() => setTab('drives')} style={s.ghostBtn}>
@@ -1011,15 +1107,37 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                   </div>
                 </div>
 
-                {/* Bulk actions */}
-                {selected.length > 0 && (
-                  <div style={s.bulkRow}>
-                    <span style={{ fontSize: '0.85rem', color: '#60A5FA', fontWeight: 600 }}>{selected.length} selected</span>
-                    {STATUS_OPTS.map(st => (
-                      <button key={st} onClick={() => bulkUpdate(st)} style={s.bulkBtn}>{st}</button>
-                    ))}
+                {/* Select All / Deselect All + Bulk actions */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => setSelected(applicants.map((a: any) => a.application_id))}
+                      style={{ ...s.ghostBtn, fontSize: '0.8rem', padding: '6px 12px' }}
+                    >
+                      ✓ Select All
+                    </button>
+                    <button
+                      onClick={() => setSelected([])}
+                      style={{ ...s.ghostBtn, fontSize: '0.8rem', padding: '6px 12px' }}
+                    >
+                      ✕ Deselect All
+                    </button>
                   </div>
-                )}
+                  {selected.length > 0 && (
+                    <div style={s.bulkRow}>
+                      <span style={{ fontSize: '0.85rem', color: '#60A5FA', fontWeight: 600 }}>{selected.length} selected</span>
+                      <button onClick={() => bulkUpdate('Selected')} style={{ ...s.bulkBtn, background: 'rgba(16,185,129,0.2)', color: '#10B981', border: '1px solid rgba(16,185,129,0.4)' }}>
+                        ✓ Bulk Select
+                      </button>
+                      <button onClick={() => bulkUpdate('Cancelled')} style={{ ...s.bulkBtn, background: 'rgba(239,68,68,0.15)', color: '#F87171', border: '1px solid rgba(239,68,68,0.35)' }}>
+                        ✕ Bulk Cancel
+                      </button>
+                      {STATUS_OPTS.filter(st => st !== 'Selected' && st !== 'Cancelled').map(st => (
+                        <button key={st} onClick={() => bulkUpdate(st)} style={s.bulkBtn}>{st}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {applicants.length === 0 ? (
@@ -1029,7 +1147,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                   <table style={s.table}>
                     <thead>
                       <tr>
-                        <th style={s.th}><input type="checkbox" checked={selected.length === applicants.length} onChange={selectAll} /></th>
+                        <th style={s.th}><input type="checkbox" checked={selected.length === applicants.length && applicants.length > 0} onChange={selectAll} /></th>
                         <th style={s.th}>Student Name</th>
                         <th style={s.th}>Roll No</th>
                         <th style={s.th}>CGPA</th>
@@ -1037,11 +1155,15 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                         <th style={s.th}>Resume</th>
                         <th style={s.th}>Applied Date</th>
                         <th style={s.th}>Status</th>
+                        <th style={s.th}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {applicants.map(a => {
+                      {applicants.map((a: any) => {
                         const stStyle = STATUS_STYLES[a.status] || STATUS_STYLES['Applied'];
+                        const safeResume = getSafeUrl(a.resume_url);
+                        const isSelected = a.status === 'Selected';
+                        const isCancelled = a.status === 'Cancelled';
                         return (
                           <tr key={a.application_id} style={{ background: selected.includes(a.application_id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
                             <td style={s.td}><input type="checkbox" checked={selected.includes(a.application_id)} onChange={() => toggleSelect(a.application_id)} /></td>
@@ -1050,14 +1172,44 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                             <td style={{ ...s.td, color: '#34D399', fontWeight: 700 }}>{a.cgpa}</td>
                             <td style={s.td}>{a.mobile}</td>
                             <td style={s.td}>
-                              {a.resume_url ? <a href={a.resume_url} target="_blank" rel="noreferrer" style={{ color: '#60A5FA', textDecoration: 'underline' }}>View Resume</a> : 'N/A'}
+                              {safeResume ? (
+                                <a href={safeResume} target="_blank" rel="noreferrer noopener" style={{ color: '#60A5FA', textDecoration: 'underline', fontWeight: 600 }}>
+                                  📄 View Resume
+                                </a>
+                              ) : 'N/A'}
                             </td>
                             <td style={s.td}>{new Date(a.applied_at).toLocaleDateString()}</td>
                             <td style={s.td}>
-                              <select value={a.status} onChange={e => updateStatus(a.application_id, e.target.value)}
-                                style={{ ...s.selectPill, background: stStyle.bg, color: stStyle.color }}>
-                                {STATUS_OPTS.map(opt => <option key={opt} value={opt} style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }}>{opt}</option>)}
-                              </select>
+                              <span style={{ ...s.pill, background: stStyle.bg, color: stStyle.color, fontWeight: 700 }}>
+                                {a.status}
+                              </span>
+                            </td>
+                            <td style={s.td}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {!isSelected && !isCancelled && (
+                                  <button
+                                    onClick={() => handleSelectApplicant(a.application_id, a.student_id)}
+                                    style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981', border: '1px solid rgba(16,185,129,0.35)', padding: '3px 8px', borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                                  >
+                                    ✓ Select
+                                  </button>
+                                )}
+                                {isSelected && (
+                                  <button
+                                    onClick={() => handleCancelSelection(a.application_id, a.student_id)}
+                                    style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)', padding: '3px 8px', borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                                  >
+                                    ✕ Cancel
+                                  </button>
+                                )}
+                                <select
+                                  value={a.status}
+                                  onChange={e => updateStatus(a.application_id, e.target.value)}
+                                  style={{ ...s.selectPill, background: stStyle.bg, color: stStyle.color }}
+                                >
+                                  {STATUS_OPTS.map(opt => <option key={opt} value={opt} style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }}>{opt}</option>)}
+                                </select>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1068,6 +1220,54 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
               )}
             </div>
           )
+      )}
+
+      {/* ── DUPLICATE STUDENTS MODAL ── */}
+      {showDuplicatesModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: 16, maxWidth: 720, width: '100%', padding: 28, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>⚠️ Duplicate Student Records</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Review and resolve potential duplicate registrations detected by the system.</p>
+              </div>
+              <button onClick={() => setShowDuplicatesModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1.4rem' }}>×</button>
+            </div>
+
+            {duplicatesLoading ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>Loading duplicate records...</div>
+            ) : duplicates.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>✅</div>
+                <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>No duplicate records found!</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>All student registrations appear to be unique.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {duplicates.map((dup: any) => (
+                  <div key={dup.id} style={{ background: 'var(--bg-main)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 12, padding: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{dup.student_name || 'Unknown Student'}</span>
+                        <span style={{ marginLeft: 10, background: dup.status === 'DUPLICATE_CONFIRMED' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: dup.status === 'DUPLICATE_CONFIRMED' ? '#F87171' : '#FBBF24', padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700 }}>
+                          {dup.status}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
+                      <strong>Matched On:</strong> {(dup.matched_fields || []).join(', ')} &bull; <strong>Roll:</strong> {dup.roll_number} &bull; <strong>Email:</strong> {dup.institute_email}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={() => resolveDuplicate(dup.id, 'KEEP_EXISTING')} style={{ background: 'rgba(59,130,246,0.15)', color: '#60A5FA', border: '1px solid rgba(59,130,246,0.35)', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>Keep Existing</button>
+                      <button onClick={() => resolveDuplicate(dup.id, 'CONFIRM_DUPLICATE')} style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>Confirm Duplicate</button>
+                      <button onClick={() => resolveDuplicate(dup.id, 'REJECT_WARNING')} style={{ background: 'rgba(156,163,175,0.1)', color: '#9CA3AF', border: '1px solid rgba(156,163,175,0.3)', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>Reject Warning</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── EXPORT HR REPORT TAB ── */}
