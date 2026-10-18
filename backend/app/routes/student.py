@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from app.db.utils import id_query, parse_id
 from app.services.excel_importer import process_excel_import
 from app.services.audit import log_audit_event
+from app.services.duplicate_detection_service import DuplicateDetectionService
+from app.services.student_validation_service import StudentValidationService
+from app.services.backlog_service import BacklogService
 import pandas as pd
 import io
 import os
@@ -392,7 +395,32 @@ async def request_profile_update(
                 
     if not update_data:
         raise HTTPException(status_code=400, detail="No valid update fields provided.")
-        
+
+    # Validate safe URLs on links & resume
+    if payload.links:
+        for lk, lu in payload.links.items():
+            if lu and not StudentValidationService.is_safe_url(lu):
+                raise HTTPException(status_code=400, detail=f"Unsafe URL protocol in {lk}. Only http:// and https:// are allowed.")
+    if payload.resume_url and not StudentValidationService.is_safe_url(payload.resume_url):
+        raise HTTPException(status_code=400, detail="Unsafe URL protocol in resume link. Only http:// and https:// are allowed.")
+
+    # Validate duplicate student identifiers within institution
+    dup_check_data = {
+        "personal_email": str(payload.personal_email) if payload.personal_email else None,
+        "institute_email": str(payload.institute_email) if payload.institute_email else None,
+        "mobile": payload.mobile
+    }
+    dup_res = await DuplicateDetectionService.check_duplicate(
+        institution_id=institution_id,
+        student_data=dup_check_data,
+        exclude_student_id=student_id
+    )
+    if dup_res["is_duplicate"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Conflict detected: Another student record already exists with matching {', '.join(dup_res['matched_fields'])}."
+        )
+
     # Check if student is modifying dynamic fields directly (skills, projects, links, mobile) vs authoritative fields
     authoritative_fields = {"cgpa", "active_backlogs", "total_backlogs", "dob", "gender"}
     has_authoritative = any(k in authoritative_fields for k in update_data.keys())
@@ -622,3 +650,243 @@ async def update_or_upload_student_resume(
         "message": "Resume updated successfully.",
         "resume_url": final_url
     }
+
+# ── 5. Google Forms Webhook Ingestion with Duplicate & Validation Checks ───────
+
+class GFormWebhookPayload(BaseModel):
+    name: Optional[str] = None
+    roll_number: Optional[str] = None
+    dob: Optional[str] = None
+    gender: Optional[str] = None
+    mobile: Optional[str] = None
+    personal_email: Optional[str] = None
+    institute_email: Optional[str] = None
+    program_name: Optional[str] = None
+    department_name: Optional[str] = None
+    class_name: Optional[str] = None
+    cgpa: Optional[float] = None
+    active_backlogs: Optional[int] = 0
+    total_backlogs: Optional[int] = 0
+    tenth_board: Optional[str] = None
+    tenth_percentage: Optional[float] = None
+    twelfth_board: Optional[str] = None
+    twelfth_percentage: Optional[float] = None
+    skills: Optional[List[str]] = None
+    projects: Optional[List[str]] = None
+    resume_url: Optional[str] = None
+    photo_url: Optional[str] = None
+
+class DuplicateResolvePayload(BaseModel):
+    action: str  # CONFIRM_DUPLICATE, KEEP_EXISTING, MERGE, REJECT_WARNING
+    notes: Optional[str] = None
+
+@router.post("/webhook/gform/{institution_id}")
+async def google_forms_webhook_endpoint(
+    institution_id: str,
+    payload: GFormWebhookPayload
+):
+    """
+    Ingests Google Forms student submissions.
+    Enforces Student Data Validation, Duplicate Detection, and places records
+    into the pending faculty verification queue without immediate master record overwrite.
+    """
+    inst = await db.db.institutions.find_one({"$or": [{"_id": parse_id(institution_id)}, {"id": institution_id}]})
+    if not inst:
+        raise HTTPException(status_code=404, detail="Institution not found.")
+
+    sub_dict = payload.dict()
+    
+    # 1. Run Data Validation
+    validation_res = StudentValidationService.validate_student(sub_dict)
+    
+    # 2. Run Duplicate Detection across Roll, Emails, Mobile
+    dup_res = await DuplicateDetectionService.check_duplicate(
+        institution_id=institution_id,
+        student_data=sub_dict
+    )
+    
+    dup_record_id = None
+    duplicate_status = "UNIQUE"
+    if dup_res["is_duplicate"]:
+        duplicate_status = dup_res["status"]
+        dup_record_id = await DuplicateDetectionService.record_duplicate_warning(
+            institution_id=institution_id,
+            detection_result=dup_res,
+            source="google_forms_webhook",
+            source_details={"submitted_roll": payload.roll_number}
+        )
+
+    # Resolve hierarchy references if available
+    dept = await db.db.departments.find_one({
+        "institution_id": institution_id,
+        "name": {"$regex": f"^{re.escape(payload.department_name or '')}$", "$options": "i"}
+    })
+    dept_id = str(dept["_id"]) if dept else None
+
+    cls_obj = None
+    if dept_id:
+        cls_obj = await db.db.classes.find_one({
+            "department_id": dept_id,
+            "name": {"$regex": f"^{re.escape(payload.class_name or '')}$", "$options": "i"}
+        })
+    class_id = str(cls_obj["_id"]) if cls_obj else None
+
+    pending_doc = {
+        "institution_id": institution_id,
+        "name": payload.name,
+        "roll_number": payload.roll_number,
+        "dob": payload.dob,
+        "gender": payload.gender,
+        "mobile": payload.mobile,
+        "institute_email": payload.institute_email,
+        "personal_email": payload.personal_email,
+        "program_name": payload.program_name,
+        "department_name": payload.department_name,
+        "department_id": dept_id,
+        "class_name": payload.class_name,
+        "class_id": class_id,
+        "cgpa": payload.cgpa or 0.0,
+        "active_backlogs": payload.active_backlogs or 0,
+        "total_backlogs": payload.total_backlogs or 0,
+        "tenth_board": payload.tenth_board,
+        "tenth_percentage": payload.tenth_percentage,
+        "twelfth_board": payload.twelfth_board,
+        "twelfth_percentage": payload.twelfth_percentage,
+        "skills": payload.skills or [],
+        "projects": payload.projects or [],
+        "resume_url": payload.resume_url,
+        "photo_url": payload.photo_url,
+        "status": "pending",
+        "duplicate_status": duplicate_status,
+        "duplicate_record_id": dup_record_id,
+        "validation_report": validation_res,
+        "submitted_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    res = await db.db.student_pending_submissions.insert_one(pending_doc)
+
+    await log_audit_event(
+        action="student_gform_submitted",
+        actor=payload.institute_email or payload.personal_email or "google_form",
+        actor_role="AnonymousStudent",
+        entity_type="StudentPendingSubmission",
+        entity_id=str(res.inserted_id),
+        institution_id=institution_id,
+        details={
+            "roll_number": payload.roll_number,
+            "duplicate_detected": dup_res["is_duplicate"],
+            "validation_status": validation_res["overall_status"]
+        }
+    )
+
+    return {
+        "success": True,
+        "message": "Submission received and queued for Faculty Coordinator review.",
+        "submission_id": str(res.inserted_id),
+        "duplicate_detected": dup_res["is_duplicate"],
+        "duplicate_status": duplicate_status,
+        "validation_status": validation_res["overall_status"]
+    }
+
+# ── 6. Duplicate Student Warnings & Review ────────────────────────────────────
+
+@router.get("/duplicates", dependencies=[Depends(RoleChecker(["Faculty", "TPO", "Dean"]))])
+async def list_duplicate_student_records(
+    status_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Lists duplicate student detection warnings for the institution."""
+    query: Dict[str, Any] = {"institution_id": institution_id}
+    if status_filter:
+        query["status"] = status_filter
+
+    cursor = db.db.duplicate_records.find(query).sort("created_at", -1)
+    duplicates = await cursor.to_list(length=200)
+
+    for d in duplicates:
+        d["id"] = str(d["_id"])
+        del d["_id"]
+
+    return duplicates
+
+@router.post("/duplicates/{duplicate_id}/resolve", dependencies=[Depends(RoleChecker(["Faculty", "TPO", "Dean"]))])
+async def resolve_duplicate_student_warning(
+    duplicate_id: str,
+    payload: DuplicateResolvePayload,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """
+    Authorized resolution of duplicate student warning (CONFIRM_DUPLICATE, KEEP_EXISTING, MERGE, REJECT_WARNING).
+    Maintains complete audit log.
+    """
+    res = await DuplicateDetectionService.resolve_duplicate(
+        duplicate_id=duplicate_id,
+        institution_id=institution_id,
+        action=payload.action,
+        resolved_by_user=current_user,
+        notes=payload.notes
+    )
+    return res
+
+# ── 7. Comprehensive Student Data Validation Reports ──────────────────────────
+
+@router.get("/profile/validation-report", dependencies=[Depends(RoleChecker(["Student"]))])
+async def get_my_validation_report(
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Returns complete 10-category validation report for the authenticated student."""
+    student = await db.db.students.find_one(id_query(current_user["user_id"]))
+    if not student:
+        raise HTTPException(status_code=404, detail="Student profile not found.")
+    return StudentValidationService.validate_student(student)
+
+@router.get("/{student_id}/validation-report", dependencies=[Depends(RoleChecker(["Faculty", "TPO", "Dean", "Student"]))])
+async def get_student_validation_report(
+    student_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Returns complete 10-category validation report for any student within the institution."""
+    if current_user["role"] == "Student" and str(current_user["user_id"]) != student_id and parse_id(str(current_user["user_id"])) != parse_id(student_id):
+        raise HTTPException(status_code=403, detail="Students may only view their own validation report.")
+
+    student = await db.db.students.find_one({
+        "institution_id": institution_id,
+        "$or": [{"_id": parse_id(student_id)}, {"id": student_id}, {"student_id": student_id}]
+    })
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found.")
+
+    return StudentValidationService.validate_student(student)
+
+# ── 8. Structured Backlog History ─────────────────────────────────────────────
+
+@router.get("/profile/backlog-history", dependencies=[Depends(RoleChecker(["Student"]))])
+async def get_my_backlog_history(
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Returns structured backlog history distinguishing active vs historical backlogs."""
+    return await BacklogService.get_student_backlog_history(
+        student_id=current_user["user_id"],
+        institution_id=institution_id
+    )
+
+@router.get("/{student_id}/backlog-history", dependencies=[Depends(RoleChecker(["Faculty", "TPO", "Dean", "Student"]))])
+async def get_student_backlog_history(
+    student_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Returns structured backlog history for student within the institution."""
+    if current_user["role"] == "Student" and str(current_user["user_id"]) != student_id and parse_id(str(current_user["user_id"])) != parse_id(student_id):
+        raise HTTPException(status_code=403, detail="Students may only view their own backlog history.")
+
+    return await BacklogService.get_student_backlog_history(
+        student_id=student_id,
+        institution_id=institution_id
+    )
+
