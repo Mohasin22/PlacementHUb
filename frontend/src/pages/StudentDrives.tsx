@@ -17,8 +17,10 @@ interface StudentDrivesProps {
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   Applied:     { bg: 'rgba(59,130,246,0.15)',  color: '#60A5FA', label: 'Applied' },
   Shortlisted: { bg: 'rgba(245,158,11,0.15)',  color: '#FBBF24', label: 'Shortlisted' },
+  Selected:    { bg: 'rgba(16,185,129,0.2)',   color: '#10B981', label: '✓ Selected' },
   Placed:      { bg: 'rgba(16,185,129,0.15)',  color: '#34D399', label: 'Placed!' },
   Rejected:    { bg: 'rgba(239,68,68,0.12)',   color: '#F87171', label: 'Rejected' },
+  Cancelled:   { bg: 'rgba(239,68,68,0.18)',   color: '#F87171', label: '✕ Cancelled' },
   'On-Hold':   { bg: 'rgba(156,163,175,0.1)',  color: '#6B7280', label: 'On-Hold' },
 };
 
@@ -249,15 +251,17 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
           <div style={styles.grid}>
             {applications.map(app => {
               const st = STATUS_STYLES[app.status] || STATUS_STYLES['Applied'];
+              const isCancelled = app.status === 'Cancelled';
+              const isSelected = app.status === 'Selected';
               return (
-                <div key={app.application_id} style={styles.card}>
+                <div key={app.application_id} style={{ ...styles.card, opacity: isCancelled ? 0.75 : 1, border: isSelected ? '1px solid rgba(16,185,129,0.4)' : styles.card.border }}>
                   <div style={styles.cardHeader}>
-                    <div style={styles.avatar}>{app.company_name ? app.company_name.charAt(0) : 'C'}</div>
+                    <div style={{ ...styles.avatar, background: isSelected ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.15)', color: isSelected ? '#10B981' : '#3B82F6' }}>{app.company_name ? app.company_name.charAt(0) : 'C'}</div>
                     <div style={{ flex: 1 }}>
                       <div style={styles.company}>{app.company_name}</div>
                       <div style={styles.role}>{app.job_role}</div>
                     </div>
-                    <span style={{ ...styles.dlBadge, background: st.bg, color: st.color }}>
+                    <span style={{ ...styles.dlBadge, background: st.bg, color: st.color, fontWeight: 700 }}>
                       {st.label}
                     </span>
                   </div>
@@ -271,7 +275,19 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
                       <span style={styles.metaLbl}>Applied Date</span>
                       <span style={styles.metaVal}>{new Date(app.applied_at).toLocaleDateString()}</span>
                     </div>
+                    {app.status_updated_at && (
+                      <div style={styles.metaItem}>
+                        <span style={styles.metaLbl}>Last Updated</span>
+                        <span style={styles.metaVal}>{new Date(app.status_updated_at).toLocaleDateString()}</span>
+                      </div>
+                    )}
                   </div>
+
+                  {(isSelected || isCancelled) && (
+                    <div style={{ padding: '8px 10px', borderRadius: 8, background: isSelected ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.06)', border: `1px solid ${isSelected ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)'}`, fontSize: '0.8rem', color: isSelected ? '#10B981' : '#F87171', fontWeight: 600 }}>
+                      {isSelected ? '✓ You have been selected for this role. Congratulations!' : '✕ Your selection was cancelled for this drive.'}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -384,6 +400,24 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
                   <div style={{ gridColumn: '1 / -1' }}><strong>Email:</strong> {previewData.snapshot_preview.institutional_email}</div>
                   <div style={{ gridColumn: '1 / -1' }}><strong>Skills:</strong> {previewData.snapshot_preview.skills?.join(', ') || 'None listed'}</div>
                 </div>
+
+                {/* Eligibility Criteria Breakdown */}
+                {previewData.eligibility_breakdown && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Eligibility Criteria</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {Object.entries(previewData.eligibility_breakdown).map(([criterion, result]: [string, any]) => {
+                        const pass = result === true || result === 'PASS' || (typeof result === 'object' && result.status === 'PASS');
+                        const label = criterion.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                        return (
+                          <span key={criterion} style={{ background: pass ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)', color: pass ? '#34D399' : '#F87171', padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700 }}>
+                            {pass ? '✓' : '✕'} {label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
                   <button

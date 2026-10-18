@@ -16,6 +16,8 @@ from app.services.academic_timeline_service import (
     get_or_create_class_section, ensure_default_academic_calendar
 )
 from app.services.audit import log_audit_event
+from app.services.official_result_service import OfficialResultService
+from app.services.board_conversion_service import ensure_default_board_rules
 
 router = APIRouter()
 
@@ -305,3 +307,154 @@ async def clear_academic_status_override(
     )
 
     return {"message": "Academic status override removed. Student status restored to system derivation."}
+
+# ── 6. Configurable Board Conversion Rules ─────────────────────────────────────
+
+class BoardConversionRuleCreate(BaseModel):
+    board: str
+    qualification: str
+    academic_year_from: Optional[int] = None
+    academic_year_to: Optional[int] = None
+    input_type: str = "CGPA"
+    input_scale: Optional[float] = 10.0
+    output_type: str = "Percentage"
+    formula: str = "CGPA * 9.5"
+    multiplier: Optional[float] = 9.5
+    official_source: Optional[str] = None
+    active: bool = True
+    requires_manual_verification: bool = False
+
+@router.get("/conversion-rules", dependencies=[Depends(RoleChecker(["TPO", "Dean", "Faculty", "Student"]))])
+async def list_conversion_rules(
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Lists active board conversion rules available to the institution."""
+    await ensure_default_board_rules()
+    query: Dict[str, Any] = {
+        "active": True,
+        "$or": [
+            {"institution_id": institution_id},
+            {"institution_id": None},
+            {"institution_id": {"$exists": False}}
+        ]
+    }
+    cursor = db.db.board_conversion_rules.find(query)
+    rules = await cursor.to_list(length=100)
+    for r in rules:
+        r["id"] = str(r["_id"])
+        del r["_id"]
+    return rules
+
+@router.post("/conversion-rules", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RoleChecker(["Dean", "TPO"]))])
+async def create_conversion_rule(
+    payload: BoardConversionRuleCreate,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Creates a tenant-specific board conversion rule."""
+    rule_doc = payload.dict()
+    rule_doc["institution_id"] = institution_id
+    rule_doc["created_by"] = current_user["user_id"]
+    rule_doc["created_at"] = datetime.now(timezone.utc).isoformat()
+
+    res = await db.db.board_conversion_rules.insert_one(rule_doc)
+    rule_doc["id"] = str(res.inserted_id)
+    del rule_doc["_id"]
+
+    await log_audit_event(
+        action="conversion_rule_created",
+        actor=current_user["email"],
+        actor_role=current_user["role"],
+        entity_type="BoardConversionRule",
+        entity_id=rule_doc["id"],
+        institution_id=institution_id,
+        details={"board": payload.board, "formula": payload.formula}
+    )
+
+    return rule_doc
+
+# ── 7. Official Academic / Lab Results Engine ─────────────────────────────────
+
+class OfficialResultRecordPayload(BaseModel):
+    roll_number: str
+    student_name: Optional[str] = None
+    program: Optional[str] = None
+    department: Optional[str] = None
+    cgpa: Optional[float] = 0.0
+    backlogs_current: Optional[int] = 0
+    backlogs_total: Optional[int] = 0
+    sgpa_records: Optional[Dict[str, float]] = None
+    subject_results: Optional[List[Dict[str, Any]]] = None
+
+class BatchOfficialResultsPayload(BaseModel):
+    results: List[OfficialResultRecordPayload]
+    batch_name: Optional[str] = None
+
+@router.post("/official-results/batch", dependencies=[Depends(RoleChecker(["Dean", "TPO", "Faculty"]))])
+async def ingest_batch_official_results(
+    payload: BatchOfficialResultsPayload,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """
+    Ingests official college/lab results and automatically triggers
+    backlog history synchronization and mismatch tracking.
+    """
+    svc = OfficialResultService()
+    batch_id = str(uuid.uuid4())
+    ingested = 0
+
+    for rec in payload.results:
+        rec_dict = rec.dict()
+        rec_dict["source_batch_id"] = batch_id
+        await svc.ingest_official_result_record(
+            institution_id=institution_id,
+            record=rec_dict,
+            uploaded_by_user_id=current_user["user_id"]
+        )
+        ingested += 1
+
+    await log_audit_event(
+        action="official_results_ingested",
+        actor=current_user["email"],
+        actor_role=current_user["role"],
+        entity_type="OfficialResultsBatch",
+        entity_id=batch_id,
+        institution_id=institution_id,
+        details={"count": ingested, "batch_name": payload.batch_name}
+    )
+
+    return {
+        "success": True,
+        "message": f"Successfully ingested {ingested} official academic records.",
+        "batch_id": batch_id,
+        "ingested_count": ingested
+    }
+
+@router.get("/official-results", dependencies=[Depends(RoleChecker(["Dean", "TPO", "Faculty"]))])
+async def list_official_results(
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Lists official college results uploaded for this institution."""
+    svc = OfficialResultService()
+    return await svc.source.list_official_results(institution_id=institution_id, limit=limit)
+
+@router.get("/official-results/compare/{student_id}", dependencies=[Depends(RoleChecker(["Dean", "TPO", "Faculty", "Student"]))])
+async def compare_student_with_official_results(
+    student_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """
+    Compares student submitted data with official college results.
+    Highlights CGPA, backlogs, and subject discrepancies visually.
+    """
+    if current_user["role"] == "Student" and str(current_user["user_id"]) != student_id and parse_id(str(current_user["user_id"])) != parse_id(student_id):
+        raise HTTPException(status_code=403, detail="Students may only compare their own academic records.")
+
+    svc = OfficialResultService()
+    return await svc.compare_student_with_official(institution_id=institution_id, student_id=student_id)
+

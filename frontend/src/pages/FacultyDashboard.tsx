@@ -17,6 +17,12 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
   const [error, setError] = useState<string | null>(null);
   const [tab, setTabState] = useState<'reviews' | 'students'>('reviews');
 
+  // Request Changes modal state
+  const [showChangesModal, setShowChangesModal] = useState(false);
+  const [changesTargetId, setChangesTargetId] = useState<string | null>(null);
+  const [changesReason, setChangesReason] = useState('');
+  const [submittingChanges, setSubmittingChanges] = useState(false);
+
 
 
   useEffect(() => {
@@ -244,6 +250,38 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
       fetchReviews();
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const openRequestChangesModal = (id: string) => {
+    setChangesTargetId(id);
+    setChangesReason('');
+    setShowChangesModal(true);
+  };
+
+  const handleRequestChanges = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changesTargetId || !changesReason.trim()) return;
+    setSubmittingChanges(true);
+    try {
+      const response = await fetch(`${API_BASE}/faculty/reviews/submissions/${changesTargetId}/request-changes`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: changesReason.trim() })
+      });
+      if (!response.ok) {
+        const d = await response.json();
+        throw new Error(d.detail || 'Failed to request changes.');
+      }
+      alert('Changes requested. The student has been notified.');
+      setShowChangesModal(false);
+      setChangesTargetId(null);
+      setChangesReason('');
+      fetchReviews();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSubmittingChanges(false);
     }
   };
 
@@ -551,6 +589,33 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
                           />
                         </div>
 
+                        {/* Validation issues pill list */}
+                        {sub.validation_report && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                            {(sub.validation_report.errors || []).map((e: string, i: number) => (
+                              <span key={i} style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', padding: '2px 8px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700 }}>❌ {e}</span>
+                            ))}
+                            {(sub.validation_report.warnings || []).map((w: string, i: number) => (
+                              <span key={i} style={{ background: 'rgba(245,158,11,0.12)', color: '#FBBF24', padding: '2px 8px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700 }}>⚠️ {w}</span>
+                            ))}
+                            {(sub.validation_report.missing_fields || []).map((f: string, i: number) => (
+                              <span key={i} style={{ background: 'rgba(156,163,175,0.12)', color: '#9CA3AF', padding: '2px 8px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700 }}>🔲 Missing: {f}</span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Official vs student data mismatches */}
+                        {sub.official_result_comparison && (sub.official_result_comparison.discrepancies || []).length > 0 && (
+                          <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>⚠ Official Record Mismatches</div>
+                            {sub.official_result_comparison.discrepancies.map((d: any, i: number) => (
+                              <div key={i} style={{ fontSize: '0.8rem', color: '#F87171', marginBottom: 4 }}>
+                                <strong>{d.field}:</strong> Student entered <em>{d.student_value}</em> — Official: <em>{d.official_value}</em>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         <div style={styles.cardActions}>
                           <button onClick={() => handleRejectSubmission(sub.id)} style={styles.rejectBtn}>
                             Reject
@@ -558,8 +623,14 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
                           <button onClick={() => startEditingSubmission(sub)} style={{ ...styles.rejectBtn, background: 'none', border: '1px solid #D1D5DB', color: '#4B5563' }}>
                             Edit
                           </button>
+                          <button
+                            onClick={() => openRequestChangesModal(sub.id)}
+                            style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', color: '#D97706', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                          >
+                            🔄 Request Changes
+                          </button>
                           <button onClick={() => handleApproveSubmission(sub.id)} className="btn-primary" style={styles.approveBtn}>
-                            Verify & Approve
+                            Verify &amp; Approve
                           </button>
                         </div>
                       </div>
@@ -807,6 +878,31 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
               </button>
             </>
           )}
+        </div>
+      )}
+      {/* ── Request Changes Modal ── */}
+      {showChangesModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
+          <div style={{ background: '#FFFFFF', borderRadius: 16, maxWidth: 500, width: '100%', padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem', fontWeight: 800, color: '#111827' }}>🔄 Request Data Corrections</h3>
+            <p style={{ margin: '0 0 20px', fontSize: '0.84rem', color: '#6B7280' }}>Enter the reason the student needs to correct their submission. This will be displayed to the student.</p>
+            <form onSubmit={handleRequestChanges}>
+              <textarea
+                required
+                rows={4}
+                placeholder="e.g., Your CGPA does not match official university records. Please verify and resubmit with correct CGPA..."
+                value={changesReason}
+                onChange={e => setChangesReason(e.target.value)}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #D1D5DB', resize: 'vertical', fontSize: '0.85rem', color: '#111827', boxSizing: 'border-box' }}
+              />
+              <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowChangesModal(false)} style={{ padding: '8px 16px', borderRadius: 7, border: '1px solid #D1D5DB', background: 'none', cursor: 'pointer', color: '#6B7280', fontSize: '0.85rem' }}>Cancel</button>
+                <button type="submit" disabled={submittingChanges || !changesReason.trim()} style={{ padding: '8px 18px', borderRadius: 7, background: '#D97706', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', opacity: submittingChanges ? 0.7 : 1 }}>
+                  {submittingChanges ? 'Sending...' : 'Send Request'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

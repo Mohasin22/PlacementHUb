@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from app.db.tenant import get_current_user, get_tenant_id, RoleChecker
 from app.db.connection import db
 from app.services.email import send_drive_notification_email
-from app.services.eligibility_engine import evaluate_student_eligibility, get_eligible_students_for_drive
+from app.services.eligibility_engine import (
+    evaluate_student_eligibility, evaluate_student_eligibility_detailed,
+    get_eligible_students_for_drive
+)
 from app.services.audit import log_audit_event
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -23,6 +26,7 @@ class DriveCreatePayload(BaseModel):
     min_twelfth_percentage: Optional[float] = None
     max_backlogs: int = 99
     max_total_backlogs: Optional[int] = None
+    historical_backlogs_allowed: Optional[bool] = True
     allowed_departments: List[str] = []  # List of department ID strings or names
     allowed_programs: List[str] = []     # List of program ID strings or names
     education_gap_allowed: bool = True
@@ -56,6 +60,7 @@ async def create_drive(
         "min_twelfth_percentage": payload.min_twelfth_percentage,
         "max_backlogs": payload.max_backlogs,
         "max_total_backlogs": payload.max_total_backlogs,
+        "historical_backlogs_allowed": payload.historical_backlogs_allowed,
         "allowed_departments": payload.allowed_departments,
         "allowed_programs": payload.allowed_programs,
         "education_gap_allowed": payload.education_gap_allowed,
@@ -154,6 +159,7 @@ async def update_drive(
         "min_twelfth_percentage": payload.min_twelfth_percentage,
         "max_backlogs": payload.max_backlogs,
         "max_total_backlogs": payload.max_total_backlogs,
+        "historical_backlogs_allowed": payload.historical_backlogs_allowed,
         "allowed_departments": payload.allowed_departments,
         "allowed_programs": payload.allowed_programs,
         "education_gap_allowed": payload.education_gap_allowed,
@@ -240,7 +246,7 @@ async def get_application_preview(
     if not student or not drive:
         raise HTTPException(status_code=404, detail="Student or Drive not found.")
 
-    is_eligible, reasons = evaluate_student_eligibility(student, drive)
+    is_eligible, reasons, breakdown = evaluate_student_eligibility_detailed(student, drive)
 
     preview = {
         "drive_id": drive_id,
@@ -249,6 +255,7 @@ async def get_application_preview(
         "package": drive.get("package"),
         "is_eligible": is_eligible,
         "eligibility_reasons": reasons,
+        "eligibility_breakdown": breakdown,
         "snapshot_preview": {
             "name": student.get("name") or student.get("identity", {}).get("full_name"),
             "roll_number": student.get("roll_number") or student.get("student_id"),
