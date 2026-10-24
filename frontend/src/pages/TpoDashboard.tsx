@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { BulkStudentUpload } from '../components/BulkStudentUpload';
 import { TpoStudentHierarchyView } from '../components/TpoStudentHierarchyView';
+import { AiDriveModal } from '../components/AiDriveModal';
 import {
   AnalyticsIcon,
   CalendarIcon,
@@ -18,6 +19,7 @@ import {
   BuildingIcon,
   CloseIcon,
   PhoneIcon,
+  SparklesIcon,
 } from '../components/Icons';
 import { getSafeUrl } from '../utils/safeUrl';
 
@@ -61,6 +63,7 @@ const EMPTY_FORM = {
 export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId, activeTab, setActiveTab }) => {
   const [tab, setTabState] = useState<Tab>('drives');
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const [isAiDriveModalOpen, setIsAiDriveModalOpen] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [driveFilter, setDriveFilter] = useState<'active' | 'closed'>('active');
 
@@ -106,10 +109,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
   const [facultyDeptId, setFacultyDeptId] = useState<string>('');
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  // ── Duplicate Detection State ─────────────────────────────────────────────
-  const [duplicates, setDuplicates] = useState<any[]>([]);
-  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
-  const [duplicatesLoading, setDuplicatesLoading] = useState(false);
 
   // ── HR Analytics State ───────────────────────────────────────────────────
   const [hrExcelFile, setHrExcelFile] = useState<File | null>(null);
@@ -280,36 +279,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     } else flash('Bulk update failed.', false);
   };
 
-  const loadDuplicates = async () => {
-    setDuplicatesLoading(true);
-    try {
-      const res = await fetch(`${API}/students/duplicates`, { headers: h });
-      if (res.ok) {
-        const data = await res.json();
-        setDuplicates(data.duplicates || []);
-      }
-    } catch (e) { }
-    finally { setDuplicatesLoading(false); }
-  };
 
-  const openDuplicatesModal = () => {
-    setShowDuplicatesModal(true);
-    loadDuplicates();
-  };
-
-  const resolveDuplicate = async (duplicateId: string, action: string) => {
-    const res = await fetch(`${API}/students/duplicates/${duplicateId}/resolve`, {
-      method: 'POST', headers: h,
-      body: JSON.stringify({ action }),
-    });
-    if (res.ok) {
-      flash('Duplicate resolved.');
-      loadDuplicates();
-    } else {
-      const d = await res.json();
-      flash(d.detail || 'Failed to resolve.', false);
-    }
-  };
 
   const createDrive = async () => {
     if (!form.companyName || !form.jobRole || !form.deadline) {
@@ -559,30 +529,54 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                setForm({ ...EMPTY_FORM });
-                setEditingDriveId(null);
-                setIsDriveModalOpen(true);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                background: '#0B192C',
-                color: '#FFFFFF',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: 8,
-                fontWeight: 700,
-                fontSize: '0.88rem',
-                cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(11,25,44,0.15)',
-              }}
-            >
-              <PlusIcon size={16} color="#FFF" /> New drive
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                onClick={() => setIsAiDriveModalOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '10px 18px',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <SparklesIcon size={16} color="#FFF" /> Create with AI ⚡
+              </button>
+
+              <button
+                onClick={() => {
+                  setForm({ ...EMPTY_FORM });
+                  setEditingDriveId(null);
+                  setIsDriveModalOpen(true);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: '#0B192C',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '10px 18px',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(11,25,44,0.15)',
+                }}
+              >
+                <PlusIcon size={16} color="#FFF" /> Create Manually
+              </button>
+            </div>
           </div>
+
 
           {/* Segmented Filter Pills matching Image 1 */}
           <div
@@ -634,7 +628,89 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
           {loading ? (
             <Loader color="#3B82F6" />
-          ) : drives.filter(d => (driveFilter === 'active' ? d.is_active : !d.is_active)).length === 0 ? null : (
+          ) : drives.filter(d => (driveFilter === 'active' ? d.is_active : !d.is_active)).length === 0 ? (
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                border: '1px dashed var(--border-color)',
+                borderRadius: 16,
+                padding: '48px 24px',
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 14,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 16,
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#6366F1',
+                }}
+              >
+                <BuildingIcon size={28} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--text-primary)' }}>
+                  {driveFilter === 'active' ? 'No active placement drives found' : 'No closed placement drives'}
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: 440, margin: '6px auto 0' }}>
+                  {driveFilter === 'active'
+                    ? 'Use the AI Agent pipeline to extract drive requirements directly from a Job Description, or create one manually.'
+                    : 'Closed drives whose registration deadlines have passed will appear here.'}
+                </p>
+              </div>
+              {driveFilter === 'active' && (
+                <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                  <button
+                    onClick={() => setIsAiDriveModalOpen(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+                      color: '#FFF',
+                      border: 'none',
+                      padding: '9px 18px',
+                      borderRadius: 8,
+                      fontWeight: 700,
+                      fontSize: '0.86rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <SparklesIcon size={16} /> Create with AI
+                  </button>
+                  <button
+                    onClick={() => {
+                      setForm({ ...EMPTY_FORM });
+                      setEditingDriveId(null);
+                      setIsDriveModalOpen(true);
+                    }}
+                    style={{
+                      background: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)',
+                      padding: '9px 18px',
+                      borderRadius: 8,
+                      fontWeight: 600,
+                      fontSize: '0.86rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Create Manually
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 20 }}>
               {drives
                 .filter(d => (driveFilter === 'active' ? d.is_active : !d.is_active))
@@ -1080,15 +1156,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
             </div>
           ) : (
             <div style={s.formCard}>
-              {/* Duplicate Students Warning Banner */}
-              <div
-                onClick={openDuplicatesModal}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 10, marginBottom: 14, cursor: 'pointer' }}
-              >
-                <AlertIcon size={18} color="#FBBF24" />
-                <span style={{ color: '#FBBF24', fontWeight: 600, fontSize: '0.85rem' }}>Duplicate Student Records Detected</span>
-                <span style={{ marginLeft: 'auto', color: '#FBBF24', fontSize: '0.8rem', fontWeight: 700, textDecoration: 'underline' }}>Review &amp; Resolve →</span>
-              </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -1222,53 +1289,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
           )
       )}
 
-      {/* ── DUPLICATE STUDENTS MODAL ── */}
-      {showDuplicatesModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
-          <div style={{ background: 'var(--card-bg)', borderRadius: 16, maxWidth: 720, width: '100%', padding: 28, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>⚠️ Duplicate Student Records</h3>
-                <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Review and resolve potential duplicate registrations detected by the system.</p>
-              </div>
-              <button onClick={() => setShowDuplicatesModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1.4rem' }}>×</button>
-            </div>
 
-            {duplicatesLoading ? (
-              <div style={{ textAlign: 'center', padding: 40 }}>Loading duplicate records...</div>
-            ) : duplicates.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40 }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>✅</div>
-                <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>No duplicate records found!</p>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>All student registrations appear to be unique.</p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {duplicates.map((dup: any) => (
-                  <div key={dup.id} style={{ background: 'var(--bg-main)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 12, padding: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                      <div>
-                        <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{dup.student_name || 'Unknown Student'}</span>
-                        <span style={{ marginLeft: 10, background: dup.status === 'DUPLICATE_CONFIRMED' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: dup.status === 'DUPLICATE_CONFIRMED' ? '#F87171' : '#FBBF24', padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700 }}>
-                          {dup.status}
-                        </span>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
-                      <strong>Matched On:</strong> {(dup.matched_fields || []).join(', ')} &bull; <strong>Roll:</strong> {dup.roll_number} &bull; <strong>Email:</strong> {dup.institute_email}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={() => resolveDuplicate(dup.id, 'KEEP_EXISTING')} style={{ background: 'rgba(59,130,246,0.15)', color: '#60A5FA', border: '1px solid rgba(59,130,246,0.35)', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>Keep Existing</button>
-                      <button onClick={() => resolveDuplicate(dup.id, 'CONFIRM_DUPLICATE')} style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>Confirm Duplicate</button>
-                      <button onClick={() => resolveDuplicate(dup.id, 'REJECT_WARNING')} style={{ background: 'rgba(156,163,175,0.1)', color: '#9CA3AF', border: '1px solid rgba(156,163,175,0.3)', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>Reject Warning</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* ── EXPORT HR REPORT TAB ── */}
       {tab === 'export' && (
@@ -2001,9 +2022,24 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
         </div>,
         document.body
       )}
+
+
+      {/* ── AI PLACEMENT DRIVE CREATION MODAL ── */}
+      <AiDriveModal
+        token={token}
+        isOpen={isAiDriveModalOpen}
+        onClose={() => setIsAiDriveModalOpen(false)}
+        onDrivePublished={() => {
+          flash('Placement drive successfully created via AI and published!');
+          loadDrives();
+        }}
+        departments={allDepts}
+        programs={hierarchy}
+      />
     </div>
   );
 };
+
 
 const Loader = ({ color }: { color: string }) => (
   <div style={{ padding: 40, textAlign: 'center' }}>

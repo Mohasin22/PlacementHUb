@@ -2,6 +2,8 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
 from app.db.connection import db
 from app.db.utils import id_query, parse_id
+from app.services.department_normalizer import are_departments_equivalent
+
 
 def evaluate_student_eligibility(
     student: Dict[str, Any],
@@ -116,12 +118,19 @@ def evaluate_student_eligibility_detailed(
     allowed_depts = drive.get("allowed_departments") or []
     if allowed_depts:
         st_dept_id = str(acad_id.get("department_id") or student.get("department_id") or "")
-        st_dept_name = (acad_id.get("department_name") or student.get("department_name") or "").lower()
+        st_dept_name = (
+            acad_id.get("department_name") or student.get("department_name") or
+            acad_id.get("department") or student.get("department") or
+            acad_id.get("branch") or student.get("branch") or ""
+        ).lower()
 
         dept_match = False
         for ad in allowed_depts:
-            ad_str = str(ad).lower()
-            if ad_str == st_dept_id.lower() or ad_str == st_dept_name or ad_str in st_dept_name:
+            ad_str = str(ad).strip()
+            if (ad_str.lower() == st_dept_id.lower() or
+                ad_str.lower() == st_dept_name or
+                (st_dept_name and ad_str.lower() in st_dept_name) or
+                are_departments_equivalent(ad_str, st_dept_name)):
                 dept_match = True
                 break
         if dept_match:
@@ -280,18 +289,36 @@ async def get_eligible_students_for_drive(drive_id: str, institution_id: str) ->
 
     query = {
         "institution_id": institution_id,
-        "status": {"$in": ["verified", "approved", "APPROVED"]}
+        "status": {"$nin": ["blocked", "rejected", "inactive", "BLOCKED", "REJECTED"]}
     }
 
     students_cursor = db.db.students.find(query)
     all_students = await students_cursor.to_list(length=5000)
 
-    from app.services.academic_timeline_service import get_student_academic_status
+    from app.services.academic_timeline_service import get_student_academic_status, ensure_default_academic_calendar
     now_utc = datetime.now(timezone.utc)
+
+    # Performance optimization: prefetch academic calendar and programs once for this institution
+    cached_cal = await db.db.academic_calendars.find_one({"institution_id": institution_id, "active": True})
+    if not cached_cal:
+        cached_cal = await ensure_default_academic_calendar(institution_id)
+
+    raw_progs = await db.db.programs.find({"institution_id": institution_id}).to_list(length=100)
+    cached_progs = {}
+    for p in raw_progs:
+        cached_progs[str(p["_id"])] = p
+        if "id" in p:
+            cached_progs[str(p["id"])] = p
 
     eligible_list = []
     for st in all_students:
-        derived_status = await get_student_academic_status(st, current_date=now_utc, institute_id=institution_id)
+        derived_status = await get_student_academic_status(
+            st,
+            current_date=now_utc,
+            institute_id=institution_id,
+            cached_calendar=cached_cal,
+            cached_programs=cached_progs
+        )
         is_el, reasons, breakdown = evaluate_student_eligibility_detailed(st, drive, derived_status=derived_status)
         if is_el:
             st["id"] = str(st["_id"])

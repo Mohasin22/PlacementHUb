@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from app.db.tenant import get_current_user, get_tenant_id, RoleChecker
 from app.db.connection import db
-from app.services.email import send_drive_notification_email
+from app.services.email import send_drive_notification_email, send_drive_notification_emails_batch
 from app.services.eligibility_engine import (
     evaluate_student_eligibility, evaluate_student_eligibility_detailed,
     get_eligible_students_for_drive
@@ -94,21 +94,30 @@ async def create_drive(
     if notifications:
         await db.db.notifications.insert_many(notifications)
         
-    async def send_emails():
-        for student in eligible_students:
-            student_email = student.get("contact", {}).get("institutional_email") or student.get("emails", {}).get("institute") or student.get("contact", {}).get("personal_email")
-            if student_email:
-                await send_drive_notification_email(
-                    email=student_email,
-                    student_name=student.get("name") or student.get("identity", {}).get("full_name", "Student"),
+    recipients_to_notify = []
+    for student in eligible_students:
+        student_email = student.get("contact", {}).get("institutional_email") or student.get("emails", {}).get("institute") or student.get("contact", {}).get("personal_email")
+        if student_email:
+            recipients_to_notify.append({
+                "email": student_email,
+                "student_name": student.get("name") or student.get("identity", {}).get("full_name", "Student")
+            })
+
+    if recipients_to_notify:
+        async def broadcast_emails():
+            try:
+                await send_drive_notification_emails_batch(
+                    recipients=recipients_to_notify,
                     company_name=payload.company_name,
                     job_role=payload.job_role,
                     package=payload.package,
                     deadline=deadline.strftime("%d %b %Y, %I:%M %p UTC"),
                     apply_url="http://localhost:5173/dashboard",
                 )
-    
-    background_tasks.add_task(send_emails)
+            except Exception as ex:
+                logger.error(f"Error during drive creation email broadcast: {ex}")
+
+        background_tasks.add_task(broadcast_emails)
         
     await log_audit_event(
         action="placement_drive_created",
@@ -294,13 +303,22 @@ async def apply_to_drive(
         
     # Check deadline
     now = datetime.now(timezone.utc)
-    deadline = drive["drive_deadline"]
-    if hasattr(deadline, "tzinfo") and deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
-    elif isinstance(deadline, str):
-        deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
-        
-    if now > deadline:
+    deadline = drive.get("drive_deadline")
+    if deadline is not None:
+        if isinstance(deadline, str):
+            try:
+                deadline = datetime.fromisoformat(deadline.strip().replace("Z", "+00:00"))
+            except ValueError:
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%d-%m-%Y"):
+                    try:
+                        deadline = datetime.strptime(deadline.strip(), fmt).replace(tzinfo=timezone.utc)
+                        break
+                    except ValueError:
+                        pass
+        if isinstance(deadline, datetime) and deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+
+    if deadline and now > deadline:
         raise HTTPException(status_code=400, detail="Drive deadline has expired.")
         
     # Check Eligibility

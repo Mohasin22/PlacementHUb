@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import {
   DrivesIcon,
   CalendarIcon,
   CheckIcon,
   AlertIcon,
-  RefreshIcon
+  RefreshIcon,
+  SparklesIcon
 } from '../components/Icons';
+import { StudentAiMatchModal } from '../components/StudentAiMatchModal';
 
 const API = 'http://localhost:8000/api';
 
@@ -43,6 +46,7 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [aiMatchDrive, setAiMatchDrive] = useState<any | null>(null);
 
   useEffect(() => {
     if (activeTab === 'events') setTab('events');
@@ -217,12 +221,31 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
                     ) : dl.expired ? (
                       <button disabled style={styles.closedBtn}>Deadline Closed</button>
                     ) : (
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {d.external_apply_link && (
                           <a href={d.external_apply_link} target="_blank" rel="noreferrer" style={styles.extLink}>
                             External Link
                           </a>
                         )}
+                        <button
+                          onClick={() => setAiMatchDrive(d)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+                            color: '#FFF',
+                            border: 'none',
+                            padding: '8px 14px',
+                            borderRadius: 8,
+                            fontWeight: 700,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
+                          }}
+                        >
+                          <SparklesIcon size={14} color="#FFF" /> AI Match ⚡
+                        </button>
                         <button
                           onClick={() => openApplyPreview(d)}
                           disabled={actionId === d.id}
@@ -231,6 +254,7 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
                           Review & Apply →
                         </button>
                       </div>
+
                     )}
                   </div>
                 </div>
@@ -340,30 +364,46 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
       )}
 
       {/* ── APPLICATION SNAPSHOT REVIEW MODAL ───────────────────────── */}
-      {selectedDriveForApply && (
+      {selectedDriveForApply && ReactDOM.createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(11, 25, 44, 0.72)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
+            zIndex: 999999,
             padding: 20,
+            boxSizing: 'border-box',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedDriveForApply(null);
+              setPreviewData(null);
+            }
           }}
         >
           <div
             style={{
               background: 'var(--card-bg)',
-              borderRadius: 16,
+              borderRadius: 20,
               maxWidth: 580,
               width: '100%',
-              padding: 24,
+              padding: 26,
               maxHeight: '85vh',
               overflowY: 'auto',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+              border: '1px solid var(--border-color)',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div>
@@ -449,11 +489,27 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── STUDENT AI ELIGIBILITY & MATCH MODAL ── */}
+      {aiMatchDrive && (
+        <StudentAiMatchModal
+          token={token}
+          drive={aiMatchDrive}
+          isOpen={!!aiMatchDrive}
+          onClose={() => setAiMatchDrive(null)}
+          onApplyConfirmed={(driveId) => {
+            setAiMatchDrive(null);
+            apply(driveId);
+          }}
+        />
       )}
     </div>
   );
 };
+
 
 const styles: Record<string, React.CSSProperties> = {
   wrap: { display: 'flex', flexDirection: 'column', gap: 24 },

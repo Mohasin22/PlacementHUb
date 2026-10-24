@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { ChangePassword } from '../components/ChangePassword';
 import { formatDocumentUrl } from '../components/StudentDetailModal';
 import { StudentAvatar } from '../components/StudentAvatar';
@@ -166,33 +167,33 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
     }
   };
 
-  const handleResumeScanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const file = files[0];
-
-    const formData = new FormData();
-    formData.append('file', file);
+  const handleScanExistingResume = async () => {
+    if (!profile) return;
+    const rawResume = profile.resume_url || profile.documents?.resume || profile.documents?.combined_documents;
+    if (!rawResume || !rawResume.trim()) {
+      setError('No active resume found on your profile. Please upload or link your resume first using "Re-upload / Update".');
+      setShowDirectUploadModal(true);
+      return;
+    }
 
     setScanningResume(true);
     setError(null);
     setMessage(null);
 
     try {
-      const res = await fetch(`${API_BASE}/resume/upload`, {
+      const res = await fetch(`${API_BASE}/resume/scan-existing`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-        body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Resume scan failed');
+      if (!res.ok) throw new Error(data.detail || 'Resume analysis failed');
       setScanResult(data);
       setSelectedScanSkills(data.profile_diff?.skills?.new_suggested || []);
       setSelectedScanProjects(data.profile_diff?.projects?.detected?.map((p: any) => p.title || p) || []);
       setShowScanModal(true);
       fetchProfile();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to analyze resume');
     } finally {
       setScanningResume(false);
     }
@@ -230,6 +231,8 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
     setIsDirectUploading(true);
     setError(null);
 
+    const docLabel = docSubTab === 'resume' ? 'Resume' : docSubTab === 'tech_certs' ? 'Technical certificates' : 'Achievement certificates';
+
     try {
       const formData = new FormData();
       if (directUploadFile) {
@@ -237,8 +240,9 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
       } else if (directInputUrl.trim()) {
         formData.append('resume_url', directInputUrl.trim());
       } else {
-        throw new Error('Please choose a resume file or enter a document URL.');
+        throw new Error(`Please choose a ${docLabel.toLowerCase()} file or enter a document URL.`);
       }
+      formData.append('doc_type', docSubTab);
 
       const res = await fetch(`${API_BASE}/students/${profile.id || profile._id}/resume`, {
         method: 'POST',
@@ -246,15 +250,15 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
         body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to update resume');
+      if (!res.ok) throw new Error(data.detail || `Failed to update ${docLabel.toLowerCase()}`);
 
-      setMessage('Resume updated successfully!');
+      setMessage(data.message || `${docLabel} updated successfully!`);
       setShowDirectUploadModal(false);
       setDirectUploadFile(null);
       setDirectInputUrl('');
       fetchProfile();
     } catch (err: any) {
-      setError(err.message || 'Failed to update resume');
+      setError(err.message || `Failed to update ${docLabel.toLowerCase()}`);
     } finally {
       setIsDirectUploading(false);
     }
@@ -522,84 +526,85 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
-        {/* ── SECTION 0: ACADEMIC BATCH & SYSTEM-DERIVED TIMELINE ───────────── */}
-        <div
-          style={{
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 16,
-            padding: 24,
-            gridColumn: '1 / -1',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <SchoolIcon size={18} color="#2563EB" />
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Academic Identity & System Timeline
-              </h3>
+      {/* ── SECTION 0: ACADEMIC BATCH & SYSTEM-DERIVED TIMELINE ───────────── */}
+      <div
+        style={{
+          background: 'var(--card-bg)',
+          border: '1px solid var(--border-color)',
+          borderRadius: 16,
+          padding: 24,
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SchoolIcon size={18} color="#2563EB" />
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Academic Identity & System Timeline
+            </h3>
+          </div>
+          <span
+            style={{
+              background: 'rgba(59,130,246,0.12)',
+              color: '#2563EB',
+              border: '1px solid rgba(59,130,246,0.3)',
+              padding: '2px 8px',
+              borderRadius: 6,
+              fontSize: '0.72rem',
+              fontWeight: 700,
+            }}
+          >
+            SYSTEM DERIVED
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>PROGRAM & DEGREE</div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
+              {profile?.program_name || academicId.program_name || 'B.Tech'}
             </div>
-            <span
-              style={{
-                background: 'rgba(59,130,246,0.12)',
-                color: '#2563EB',
-                border: '1px solid rgba(59,130,246,0.3)',
-                padding: '2px 8px',
-                borderRadius: 6,
-                fontSize: '0.72rem',
-                fontWeight: 700,
-              }}
-            >
-              SYSTEM DERIVED
-            </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>PROGRAM & DEGREE</div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
-                {profile?.program_name || academicId.program_name || 'B.Tech'}
-              </div>
+          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>DEPARTMENT / BRANCH</div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
+              {profile?.department_name || academicId.department_name || 'Computer Science & Engineering'}
             </div>
+          </div>
 
-            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>DEPARTMENT / BRANCH</div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
-                {profile?.department_name || academicId.department_name || 'Computer Science & Engineering'}
-              </div>
+          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>ACADEMIC BATCH</div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#4F46E5', marginTop: 2 }}>
+              {profile?.derived_academic_status?.batch_label || profile?.batch_label || academicId.batch_label || '2023–2027'}
             </div>
+          </div>
 
-            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>ACADEMIC BATCH</div>
-              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#4F46E5', marginTop: 2 }}>
-                {profile?.derived_academic_status?.batch_label || profile?.batch_label || academicId.batch_label || '2023–2027'}
-              </div>
+          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>STUDY YEAR & SEMESTER</div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#059669', marginTop: 2 }}>
+              {profile?.derived_academic_status?.status_label || `${profile?.current_study_year ?? 4}th Year - ${profile?.current_semester ?? 7}th Sem`}
             </div>
+          </div>
 
-            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>STUDY YEAR & SEMESTER</div>
-              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#059669', marginTop: 2 }}>
-                {profile?.derived_academic_status?.status_label || `${profile?.current_study_year ?? 4}th Year - ${profile?.current_semester ?? 7}th Sem`}
-              </div>
+          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>CLASS / SECTION</div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
+              {profile?.class_name || academicId.class_name || 'Section-A'}
             </div>
+          </div>
 
-            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>CLASS / SECTION</div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
-                {profile?.class_name || academicId.class_name || 'Section-A'}
-              </div>
-            </div>
-
-            <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>GRADUATION YEAR</div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
-                {profile?.expected_graduation_year || profile?.passout_year || academicId.graduation_year || 2027}
-              </div>
+          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>GRADUATION YEAR</div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
+              {profile?.expected_graduation_year || profile?.passout_year || academicId.graduation_year || 2027}
             </div>
           </div>
         </div>
+      </div>
 
+      {/* ── RESPONSIVE DEDICATED LAYOUT: ACADEMIC RECORDS (SIDE) & DOCUMENTS VIEWER (MAIN) ── */}
+      <div className="profile-academic-docs-grid" style={{ marginBottom: 24 }}>
         {/* ── SECTION 1: VERIFIED ACADEMIC RECORDS (AUTHORITATIVE) ──────────── */}
         <div
           style={{
@@ -607,12 +612,15 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             border: '1px solid var(--border-color)',
             borderRadius: 16,
             padding: 24,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <GraduationCapIcon size={18} color="#10B981" />
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 Authoritative Academic Records
               </h3>
             </div>
@@ -631,67 +639,138 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, fontSize: '0.88rem' }}>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>UG CGPA (Normalized)</div>
-              <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#2563EB' }}>
-                {education.undergraduate?.normalized_cgpa ?? profile?.cgpa ?? '—'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* UG CGPA Card */}
+            <div
+              style={{
+                background: 'rgba(37,99,235,0.04)',
+                border: '1px solid rgba(37,99,235,0.18)',
+                borderRadius: 12,
+                padding: '14px 16px',
+              }}
+            >
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                UG CGPA (Normalized)
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+                <span style={{ fontWeight: 800, fontSize: '1.45rem', color: '#2563EB' }}>
+                  {education.undergraduate?.normalized_cgpa ?? profile?.cgpa ?? '—'}
+                </span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 }}>/ 10.0</span>
               </div>
             </div>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>Active Backlogs</div>
-              <div style={{ fontWeight: 800, fontSize: '1.2rem', color: (eligibility.current_backlogs || profile?.active_backlogs) ? '#EF4444' : '#10B981' }}>
-                {eligibility.current_backlogs ?? profile?.active_backlogs ?? 0}
+
+            {/* Active Backlogs Card */}
+            <div
+              style={{
+                background: (eligibility.current_backlogs || profile?.active_backlogs) ? 'rgba(239,68,68,0.05)' : 'rgba(16,185,129,0.05)',
+                border: `1px solid ${(eligibility.current_backlogs || profile?.active_backlogs) ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`,
+                borderRadius: 12,
+                padding: '14px 16px',
+              }}
+            >
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Active Backlogs
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ fontWeight: 800, fontSize: '1.45rem', color: (eligibility.current_backlogs || profile?.active_backlogs) ? '#EF4444' : '#10B981' }}>
+                  {eligibility.current_backlogs ?? profile?.active_backlogs ?? 0}
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    background: (eligibility.current_backlogs || profile?.active_backlogs) ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)',
+                    color: (eligibility.current_backlogs || profile?.active_backlogs) ? '#EF4444' : '#059669',
+                  }}
+                >
+                  {(eligibility.current_backlogs || profile?.active_backlogs) ? '⚠ Attention Required' : '✓ All Clear'}
+                </span>
               </div>
             </div>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>10th Score (Normalized %)</div>
-              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                {education.secondary?.normalized_percentage ? `${education.secondary.normalized_percentage}%` : '—'}
+
+            {/* 10th & 12th Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div
+                style={{
+                  background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 12,
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                  10th Score (%)
+                </div>
+                <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)', marginTop: 4 }}>
+                  {education.secondary?.normalized_percentage ? `${education.secondary.normalized_percentage}%` : '—'}
+                </div>
               </div>
-            </div>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>12th / Diploma (%)</div>
-              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                {education.higher_secondary_or_diploma?.normalized_percentage ? `${education.higher_secondary_or_diploma.normalized_percentage}%` : '—'}
+
+              <div
+                style={{
+                  background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 12,
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                  12th / Diploma (%)
+                </div>
+                <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)', marginTop: 4 }}>
+                  {education.higher_secondary_or_diploma?.normalized_percentage ? `${education.higher_secondary_or_diploma.normalized_percentage}%` : '—'}
+                </div>
               </div>
             </div>
           </div>
 
           {/* Backlog History Toggle */}
           {backlogHistory.length > 0 && (
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 4 }}>
               <button
                 onClick={() => setShowBacklogHistory(prev => !prev)}
-                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', color: '#60A5FA', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                style={{
+                  background: 'rgba(59,130,246,0.08)',
+                  border: '1px solid rgba(59,130,246,0.25)',
+                  color: '#60A5FA',
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  width: '100%',
+                  justifyContent: 'center',
+                }}
               >
                 📋 {showBacklogHistory ? 'Hide' : 'View'} Backlog History ({backlogHistory.length} subject{backlogHistory.length !== 1 ? 's' : ''})
               </button>
 
               {showBacklogHistory && (
                 <div style={{ marginTop: 12, overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--bg-main)' }}>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Subject</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Semester</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Attempts</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cleared Sem</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase' }}>Subject</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase' }}>Sem</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase' }}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {backlogHistory.map((bl: any, i: number) => (
                         <tr key={i} style={{ borderBottom: '1px solid var(--border-color)', background: i % 2 === 0 ? 'transparent' : 'var(--bg-main)' }}>
-                          <td style={{ padding: '8px 12px', color: 'var(--text-primary)', fontWeight: 600 }}>{bl.subject_name || bl.subject_code || '—'}</td>
-                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Sem {bl.semester || '—'}</td>
-                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{bl.attempts ?? 1}</td>
-                          <td style={{ padding: '8px 12px' }}>
-                            <span style={{ background: bl.status === 'ACTIVE' ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)', color: bl.status === 'ACTIVE' ? '#F87171' : '#34D399', padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700 }}>
-                              {bl.status === 'ACTIVE' ? '⚠ Active' : '✓ Cleared'}
+                          <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontWeight: 600 }}>{bl.subject_name || bl.subject_code || '—'}</td>
+                          <td style={{ padding: '8px 10px', color: 'var(--text-secondary)' }}>Sem {bl.semester || '—'}</td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <span style={{ background: bl.status === 'ACTIVE' ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)', color: bl.status === 'ACTIVE' ? '#F87171' : '#34D399', padding: '2px 6px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700 }}>
+                              {bl.status === 'ACTIVE' ? 'Active' : 'Cleared'}
                             </span>
                           </td>
-                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{bl.clearing_semester ? `Sem ${bl.clearing_semester}` : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -707,13 +786,13 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               setShowCorrectionModal(true);
             }}
             style={{
-              marginTop: 18,
+              marginTop: 'auto',
               width: '100%',
               background: 'rgba(99,102,241,0.08)',
               border: '1px dashed rgba(99,102,241,0.4)',
               color: '#4F46E5',
-              padding: '8px 14px',
-              borderRadius: 8,
+              padding: '10px 14px',
+              borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600,
               fontSize: '0.82rem',
@@ -721,6 +800,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
+              transition: 'background 0.2s',
             }}
           >
             <ClockIcon size={14} color="#4F46E5" />
@@ -728,7 +808,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
           </button>
         </div>
 
-        {/* ── SECTION 2: IN-PORTAL RESUME VIEWER & SCANNER ─────────────────── */}
+        {/* ── SECTION 2: IN-PORTAL RESUME & DOCUMENTS VIEWER (SPACIOUS) ─────── */}
         <div
           style={{
             background: 'var(--card-bg)',
@@ -737,114 +817,143 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             padding: 24,
             display: 'flex',
             flexDirection: 'column',
-            gap: 14,
+            gap: 16,
+            minWidth: 0,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FileTextIcon size={18} color="#2563EB" />
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Resume & Documents Viewer
-              </h3>
+          {/* Header & Status */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(37,99,235,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileTextIcon size={18} color="#2563EB" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Resume & Documents Viewer
+                </h3>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                  Official verified documents synced across placement applications
+                </div>
+              </div>
             </div>
             <span
               style={{
                 background: 'rgba(34,197,94,0.12)',
                 color: '#16A34A',
                 border: '1px solid rgba(34,197,94,0.3)',
-                padding: '2px 8px',
-                borderRadius: 6,
-                fontSize: '0.7rem',
+                padding: '4px 10px',
+                borderRadius: 20,
+                fontSize: '0.72rem',
                 fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
               }}
             >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16A34A' }} />
               ACTIVE ON PORTAL
             </span>
           </div>
 
           {/* Subtabs for Documents */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', background: 'var(--bg-secondary, rgba(0,0,0,0.03))', padding: 4, borderRadius: 12, border: '1px solid var(--border-color)', gap: 4, flexWrap: 'wrap' }}>
             <button
               onClick={() => setDocSubTab('resume')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 5,
-                padding: '5px 12px',
+                gap: 6,
+                padding: '7px 16px',
                 borderRadius: 8,
                 border: 'none',
-                background: docSubTab === 'resume' ? '#2563EB' : 'var(--bg-secondary, #F8FAFC)',
+                background: docSubTab === 'resume' ? '#2563EB' : 'transparent',
                 color: docSubTab === 'resume' ? '#FFFFFF' : 'var(--text-secondary)',
-                fontSize: '0.78rem',
-                fontWeight: 600,
+                fontSize: '0.82rem',
+                fontWeight: docSubTab === 'resume' ? 700 : 600,
                 cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
-              <span>Resume / PDF</span>
-              {resumeDoc.hasUrl && <span>●</span>}
+              <span>📄 Resume / PDF</span>
+              {resumeDoc.hasUrl && <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>●</span>}
             </button>
             <button
               onClick={() => setDocSubTab('tech_certs')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 5,
-                padding: '5px 12px',
+                gap: 6,
+                padding: '7px 16px',
                 borderRadius: 8,
                 border: 'none',
-                background: docSubTab === 'tech_certs' ? '#2563EB' : 'var(--bg-secondary, #F8FAFC)',
+                background: docSubTab === 'tech_certs' ? '#2563EB' : 'transparent',
                 color: docSubTab === 'tech_certs' ? '#FFFFFF' : 'var(--text-secondary)',
-                fontSize: '0.78rem',
-                fontWeight: 600,
+                fontSize: '0.82rem',
+                fontWeight: docSubTab === 'tech_certs' ? 700 : 600,
                 cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
-              <span>Technical Certs</span>
-              {techCertsDoc.hasUrl && <span>●</span>}
+              <span>📜 Technical Certs</span>
+              {techCertsDoc.hasUrl && <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>●</span>}
             </button>
             <button
               onClick={() => setDocSubTab('achieve_certs')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 5,
-                padding: '5px 12px',
+                gap: 6,
+                padding: '7px 16px',
                 borderRadius: 8,
                 border: 'none',
-                background: docSubTab === 'achieve_certs' ? '#2563EB' : 'var(--bg-secondary, #F8FAFC)',
+                background: docSubTab === 'achieve_certs' ? '#2563EB' : 'transparent',
                 color: docSubTab === 'achieve_certs' ? '#FFFFFF' : 'var(--text-secondary)',
-                fontSize: '0.78rem',
-                fontWeight: 600,
+                fontSize: '0.82rem',
+                fontWeight: docSubTab === 'achieve_certs' ? 700 : 600,
                 cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
-              <span>Achievements</span>
-              {achieveCertsDoc.hasUrl && <span>●</span>}
+              <span>🏆 Achievements</span>
+              {achieveCertsDoc.hasUrl && <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>●</span>}
             </button>
           </div>
 
           {/* Document Preview & Actions */}
           {currentActiveDoc.hasUrl ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Action Toolbar */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                  background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
+                  padding: '8px 12px',
+                  borderRadius: 10,
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button
                     onClick={() => setPreviewDoc({ title: `${currentDocLabel} - ${profile?.name || 'Student'}`, doc: currentActiveDoc })}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 5,
+                      gap: 6,
                       background: '#2563EB',
                       color: '#FFFFFF',
                       border: 'none',
-                      padding: '5px 12px',
+                      padding: '6px 14px',
                       borderRadius: 8,
-                      fontSize: '0.78rem',
+                      fontSize: '0.8rem',
                       fontWeight: 600,
                       cursor: 'pointer',
                     }}
                   >
-                    <FileTextIcon size={12} color="#FFFFFF" />
+                    <FileTextIcon size={14} color="#FFFFFF" />
                     <span>Full Screen</span>
                   </button>
                   <a
@@ -855,18 +964,18 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 5,
+                      gap: 6,
                       background: 'rgba(16, 185, 129, 0.1)',
                       border: '1px solid rgba(16, 185, 129, 0.3)',
                       color: '#059669',
-                      padding: '5px 12px',
+                      padding: '6px 14px',
                       borderRadius: 8,
-                      fontSize: '0.78rem',
+                      fontSize: '0.8rem',
                       fontWeight: 700,
                       textDecoration: 'none',
                     }}
                   >
-                    <UploadIcon size={12} style={{ transform: 'rotate(180deg)' }} />
+                    <UploadIcon size={13} style={{ transform: 'rotate(180deg)' }} />
                     <span>Download</span>
                   </a>
                   <a
@@ -876,18 +985,18 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 5,
-                      background: 'var(--bg-main, #F8FAFC)',
+                      gap: 6,
+                      background: 'var(--card-bg)',
                       border: '1px solid var(--border-color)',
                       color: 'var(--text-primary)',
-                      padding: '5px 12px',
+                      padding: '6px 14px',
                       borderRadius: 8,
-                      fontSize: '0.78rem',
+                      fontSize: '0.8rem',
                       fontWeight: 600,
                       textDecoration: 'none',
                     }}
                   >
-                    <span>Open ↗</span>
+                    <span>Open in New Tab ↗</span>
                   </a>
                 </div>
 
@@ -896,32 +1005,63 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 5,
+                    gap: 6,
                     background: '#0B192C',
                     color: '#FFFFFF',
                     border: 'none',
-                    padding: '5px 12px',
+                    padding: '7px 16px',
                     borderRadius: 8,
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
                     cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
                   }}
                 >
-                  <UploadIcon size={12} />
-                  <span>Re-upload / Update</span>
+                  <UploadIcon size={14} color="#FFFFFF" />
+                  <span>{`Re-upload ${docSubTab === 'resume' ? 'Resume' : 'Certificate'}`}</span>
                 </button>
               </div>
 
-              {/* Embedded Frame */}
+              {/* Drive link advice if applicable */}
+              {currentActiveDoc.isDrive && (
+                <div
+                  style={{
+                    background: 'rgba(59,130,246,0.06)',
+                    border: '1px solid rgba(59,130,246,0.2)',
+                    borderRadius: 10,
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  <div style={{ color: 'var(--text-secondary)' }}>
+                    💡 <strong>Tip:</strong> If Google Drive asks for login or permissions, ensure sharing is set to <em>"Anyone with the link can view"</em>.
+                  </div>
+                  <a
+                    href={currentActiveDoc.directUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: '#2563EB', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                  >
+                    Open Drive ↗
+                  </a>
+                </div>
+              )}
+
+              {/* Spacious Embedded Frame */}
               <iframe
                 src={currentActiveDoc.previewUrl}
                 title={currentDocLabel}
                 style={{
                   width: '100%',
-                  height: 320,
+                  height: 520,
                   border: '1px solid var(--border-color)',
-                  borderRadius: 10,
-                  background: '#F9FAFB',
+                  borderRadius: 12,
+                  background: '#F8FAFC',
+                  boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.04)',
                 }}
               />
             </div>
@@ -929,26 +1069,28 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             <div
               style={{
                 border: '2px dashed var(--border-color)',
-                borderRadius: 10,
-                padding: '24px 16px',
+                borderRadius: 14,
+                padding: '40px 24px',
                 textAlign: 'center',
                 background: 'var(--input-bg)',
               }}
             >
-              <FileTextIcon size={28} color="#94A3B8" style={{ margin: '0 auto 8px' }} />
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              <FileTextIcon size={36} color="#94A3B8" style={{ margin: '0 auto 12px' }} />
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 No {currentDocLabel} uploaded yet.
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 4, marginBottom: 16 }}>
+                Upload your document to ensure recruiters have full access during placement drives.
               </div>
               <button
                 onClick={() => setShowDirectUploadModal(true)}
                 style={{
-                  marginTop: 10,
                   background: '#2563EB',
                   color: '#FFFFFF',
                   border: 'none',
-                  padding: '7px 16px',
+                  padding: '9px 20px',
                   borderRadius: 8,
-                  fontSize: '0.8rem',
+                  fontSize: '0.84rem',
                   fontWeight: 700,
                   cursor: 'pointer',
                   display: 'inline-flex',
@@ -956,37 +1098,71 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                   gap: 6,
                 }}
               >
-                <UploadIcon size={13} />
+                <UploadIcon size={14} />
                 <span>Upload Document</span>
               </button>
             </div>
           )}
 
-          {/* AI Scan Option */}
-          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
-            <label
+          {/* AI Scan Option (Analyses already uploaded resume) */}
+          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 14, marginTop: 4 }}>
+            <div
               style={{
-                display: 'block',
-                border: '1px solid var(--border-color)',
-                borderRadius: 8,
-                padding: '10px 12px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                background: 'rgba(139,92,246,0.05)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                border: '1px solid rgba(139,92,246,0.3)',
+                borderRadius: 12,
+                padding: '12px 18px',
+                background: 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(99,102,241,0.04) 100%)',
+                boxShadow: '0 2px 8px rgba(139,92,246,0.06)',
+                flexWrap: 'wrap',
+                gap: 12,
               }}
             >
-              <input
-                type="file"
-                accept=".pdf,.docx"
-                style={{ display: 'none' }}
-                onChange={handleResumeScanUpload}
-                disabled={scanningResume}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#7C3AED' }}>
-                <SparklesIcon size={15} color="#7C3AED" />
-                <span>{scanningResume ? 'Scanning Resume with AI...' : 'Scan Resume to Auto-Extract Skills'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(124,58,237,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <SparklesIcon size={20} color="#7C3AED" />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>{scanningResume ? 'Analysing Active Resume with AI...' : 'Scan Resume to Auto-Extract Skills'}</span>
+                    {resumeDoc.hasUrl && (
+                      <span style={{ fontSize: '0.7rem', color: '#059669', background: 'rgba(16,185,129,0.12)', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
+                        Active Resume Loaded ✓
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                    AI reads your current uploaded resume and extracts technical skills, tools, and projects into your profile
+                  </div>
+                </div>
               </div>
-            </label>
+
+              <button
+                type="button"
+                onClick={handleScanExistingResume}
+                disabled={scanningResume}
+                style={{
+                  background: scanningResume ? '#9CA3AF' : '#7C3AED',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '9px 20px',
+                  borderRadius: 8,
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: scanningResume ? 'wait' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 8px rgba(124,58,237,0.25)',
+                }}
+              >
+                <SparklesIcon size={14} color="#FFFFFF" />
+                <span>{scanningResume ? 'Analysing...' : 'Analyse Current Resume'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1191,18 +1367,26 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
         <ChangePassword token={token} />
       </div>
 
-      {/* ── DIRECT RESUME RE-UPLOAD MODAL ── */}
-      {showDirectUploadModal && (
+      {/* ── DIRECT RESUME / CERTIFICATE RE-UPLOAD MODAL ── */}
+      {showDirectUploadModal && ReactDOM.createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(11, 25, 44, 0.72)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
+            zIndex: 999999,
             padding: 20,
+            boxSizing: 'border-box',
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowDirectUploadModal(false);
@@ -1211,28 +1395,44 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
           <div
             style={{
               background: 'var(--card-bg, #FFFFFF)',
-              borderRadius: 16,
-              maxWidth: 500,
+              border: '1px solid var(--border-color)',
+              borderRadius: 20,
+              maxWidth: 520,
               width: '100%',
-              padding: 24,
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              padding: 28,
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 16,
+              gap: 18,
+              position: 'relative',
+              maxHeight: '90vh',
+              overflowY: 'auto',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <UploadIcon size={20} color="#2563EB" />
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  Upload / Replace Resume
-                </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(37,99,235,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UploadIcon size={20} color="#2563EB" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    {docSubTab === 'resume'
+                      ? 'Upload / Replace Resume'
+                      : docSubTab === 'tech_certs'
+                      ? 'Upload / Replace Technical Certificates'
+                      : 'Upload / Replace Achievement Certificates'}
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Update your official document file or cloud link on the portal
+                  </div>
+                </div>
               </div>
               <button
                 onClick={() => setShowDirectUploadModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 4 }}
               >
-                <CloseIcon size={16} />
+                <CloseIcon size={18} />
               </button>
             </div>
 
@@ -1240,18 +1440,18 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             <div
               style={{
                 border: '2px dashed var(--border-color)',
-                borderRadius: 12,
-                padding: '24px 16px',
+                borderRadius: 14,
+                padding: '24px 18px',
                 textAlign: 'center',
                 background: 'var(--input-bg, #F9FAFB)',
                 cursor: 'pointer',
               }}
-              onClick={() => document.getElementById('student-profile-resume-input')?.click()}
+              onClick={() => document.getElementById('student-profile-doc-input')?.click()}
             >
               <input
-                id="student-profile-resume-input"
+                id="student-profile-doc-input"
                 type="file"
-                accept=".pdf,.docx"
+                accept={docSubTab === 'resume' ? '.pdf,.docx' : '.pdf,.png,.jpg,.jpeg'}
                 style={{ display: 'none' }}
                 onChange={(e) => {
                   if (e.target.files?.[0]) {
@@ -1260,9 +1460,9 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                   }
                 }}
               />
-              <FileTextIcon size={32} color="#3B82F6" style={{ margin: '0 auto 8px' }} />
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                {directUploadFile ? directUploadFile.name : 'Click to Browse PDF or DOCX File'}
+              <FileTextIcon size={34} color="#3B82F6" style={{ margin: '0 auto 8px' }} />
+              <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                {directUploadFile ? directUploadFile.name : `Click to Browse ${docSubTab === 'resume' ? 'PDF or DOCX Resume' : 'PDF Document'}`}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>
                 {directUploadFile ? `${(directUploadFile.size / 1024).toFixed(1)} KB` : 'Maximum file size: 15MB'}
@@ -1271,7 +1471,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ flex: 1, height: 1, background: 'var(--border-color)' }} />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>OR PASTE CLOUD / DRIVE LINK</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.04em' }}>OR PASTE CLOUD / DRIVE LINK</span>
               <div style={{ flex: 1, height: 1, background: 'var(--border-color)' }} />
             </div>
 
@@ -1281,7 +1481,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               </label>
               <input
                 type="url"
-                placeholder="https://drive.google.com/open?id=... or https://.../resume.pdf"
+                placeholder="https://drive.google.com/open?id=... or https://.../document.pdf"
                 value={directInputUrl}
                 onChange={(e) => {
                   setDirectInputUrl(e.target.value);
@@ -1289,7 +1489,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                 }}
                 style={{
                   width: '100%',
-                  height: 38,
+                  height: 40,
                   padding: '0 12px',
                   borderRadius: 8,
                   border: '1px solid var(--border-color)',
@@ -1302,14 +1502,14 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               />
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
               <button
                 onClick={() => setShowDirectUploadModal(false)}
                 disabled={isDirectUploading}
                 style={{
                   background: 'transparent',
                   border: '1px solid var(--border-color)',
-                  padding: '8px 16px',
+                  padding: '9px 18px',
                   borderRadius: 8,
                   fontSize: '0.82rem',
                   fontWeight: 600,
@@ -1326,14 +1526,15 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                   background: isDirectUploading ? '#9CA3AF' : '#2563EB',
                   color: '#FFFFFF',
                   border: 'none',
-                  padding: '8px 20px',
+                  padding: '9px 22px',
                   borderRadius: 8,
-                  fontSize: '0.82rem',
+                  fontSize: '0.84rem',
                   fontWeight: 700,
                   cursor: isDirectUploading ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 6,
+                  boxShadow: '0 2px 8px rgba(37,99,235,0.25)',
                 }}
               >
                 {isDirectUploading ? <RefreshIcon size={14} /> : <CheckIcon size={14} color="#FFFFFF" />}
@@ -1341,37 +1542,51 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── AI RESUME SUGGESTIONS DIFF MODAL ─────────────────────────────── */}
-      {showScanModal && scanResult && (
+      {showScanModal && scanResult && ReactDOM.createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(11, 25, 44, 0.72)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
+            zIndex: 999999,
             padding: 20,
+            boxSizing: 'border-box',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowScanModal(false);
           }}
         >
           <div
             style={{
               background: 'var(--card-bg)',
-              borderRadius: 16,
+              borderRadius: 20,
               maxWidth: 620,
               width: '100%',
-              padding: 24,
+              padding: 28,
               maxHeight: '90vh',
               overflowY: 'auto',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+              border: '1px solid var(--border-color)',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <SparklesIcon size={18} color="#7C3AED" />
                 <span>AI Resume Suggestions</span>
               </h3>
@@ -1457,32 +1672,46 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── ACADEMIC CORRECTION REQUEST MODAL ─────────────────────────────── */}
-      {showCorrectionModal && (
+      {showCorrectionModal && ReactDOM.createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(11, 25, 44, 0.72)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
+            zIndex: 999999,
             padding: 20,
+            boxSizing: 'border-box',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCorrectionModal(false);
           }}
         >
           <div
             style={{
               background: 'var(--card-bg)',
-              borderRadius: 16,
+              borderRadius: 20,
               maxWidth: 480,
               width: '100%',
-              padding: 24,
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              padding: 26,
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+              border: '1px solid var(--border-color)',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
@@ -1554,21 +1783,27 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* ── FULL SCREEN DOCUMENT VIEWER OVERLAY ── */}
-      {previewDoc && (
+      {previewDoc && ReactDOM.createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
             backgroundColor: 'rgba(5, 12, 22, 0.85)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 100000,
+            zIndex: 1000000,
             padding: '16px 20px',
             boxSizing: 'border-box',
           }}
@@ -1589,6 +1824,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               boxShadow: '0 30px 60px rgba(0, 0, 0, 0.45)',
               overflow: 'hidden',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div
               style={{
@@ -1685,7 +1921,8 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

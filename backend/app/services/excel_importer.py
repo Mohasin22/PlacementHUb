@@ -23,6 +23,7 @@ from app.services.academic_timeline_service import (
     ensure_default_academic_calendar
 )
 from app.services.duplicate_detection_service import DuplicateDetectionService
+from app.services.department_normalizer import are_departments_equivalent
 
 STANDARD_TEMPLATE_HEADERS = [
     "Student ID / Roll Number", "Full Name", "First Name", "Middle Name", "Last Name",
@@ -138,9 +139,15 @@ async def resolve_hierarchy_batch_and_faculty(
     # 4. Resolve Department
     matched_dept = None
     if norm_dept:
-        matched_dept = next((d for d in all_depts if (d.get("department_name") or d.get("name", "")).lower() == norm_dept or norm_dept in (d.get("department_name") or d.get("name", "")).lower()), None)
+        matched_dept = next(
+            (d for d in all_depts if are_departments_equivalent(norm_dept, d.get("department_name") or d.get("name", ""))),
+            None
+        )
+        if not matched_dept:
+            matched_dept = next((d for d in all_depts if (d.get("department_name") or d.get("name", "")).lower() == norm_dept or norm_dept in (d.get("department_name") or d.get("name", "")).lower()), None)
     if not matched_dept and all_depts:
         matched_dept = all_depts[0]
+
 
     dept_id = str(matched_dept.get("id") or matched_dept["_id"]) if matched_dept else None
     resolved_dept_name = matched_dept.get("department_name") or matched_dept.get("name", dept_name) if matched_dept else dept_name
@@ -417,15 +424,42 @@ async def process_excel_import(
         ug_score_type = get_val(row, "UG Overall Score Type", "UG Total CGPA", "U.G. (% or CGPA)")
         ug_score_raw = get_val(row, "UG Overall Score", "UG Total CGPA", "U.G. (% or CGPA), if not there put -")
         ug_norm = normalize_academic_score(ug_score_raw, expected_type="CGPA")
+        if not ug_norm.get("normalized_cgpa") or ug_norm["normalized_cgpa"] == 0.0:
+            ug_pct_raw = get_val(row, "UG Total %", "UG Percentage", "U.G. %", "UG %")
+            if ug_pct_raw and ug_pct_raw not in ["-", "*", "_", "None"]:
+                pct_norm = normalize_academic_score(ug_pct_raw, expected_type="Percentage")
+                if pct_norm.get("normalized_cgpa") and pct_norm["normalized_cgpa"] > 0:
+                    ug_norm = pct_norm
 
-        # Semesters SGPA mapping
+
+        # Semesters SGPA mapping (supports Roman numerals like I-I, II-II and digits like 1-1)
+        sem_roman_mapping = [
+            (1, "1-1", ["I-I", "I-1", "1-1"]),
+            (2, "1-2", ["I-II", "I-2", "1-2"]),
+            (3, "2-1", ["II-I", "II-1", "2-1"]),
+            (4, "2-2", ["II-II", "II-2", "2-2"]),
+            (5, "3-1", ["III-I", "III-1", "3-1"]),
+            (6, "3-2", ["III-II", "III-2", "3-2"]),
+            (7, "4-1", ["IV-I", "IV-1", "4-1"]),
+            (8, "4-2", ["IV-II", "IV-2", "4-2"]),
+        ]
         sgpa_dict: Dict[str, Optional[float]] = {}
         raw_sgpas: Dict[str, Optional[str]] = {}
-        for sem_num, sem_key in [(1, "1-1"), (2, "1-2"), (3, "2-1"), (4, "2-2"), (5, "3-1"), (6, "3-2"), (7, "4-1"), (8, "4-2")]:
-            raw_s = get_val(row, f"Semester {sem_num} SGPA", f"I-{sem_num} SGPA, if not there put -", f"II-{sem_num-2} SGPA, if not there put -", f"III-{sem_num-4} SGPA, if not there put -", f"IV-{sem_num-6} SGPA, if not there put -")
+        for sem_num, sem_key, patterns in sem_roman_mapping:
+            candidates = [f"Semester {sem_num} SGPA", f"Sem {sem_num} SGPA"] + [f"{p} SGPA, if not there put -" for p in patterns] + [f"{p} SGPA" for p in patterns]
+            raw_s = get_val(row, *candidates)
             raw_sgpas[sem_key] = raw_s or None
             s_norm = normalize_academic_score(raw_s, expected_type="CGPA")
             sgpa_dict[sem_key] = s_norm.get("normalized_cgpa")
+
+        # If UG Overall score was empty or '-', derive CGPA from available semester SGPAs
+        valid_sgpas = [v for v in sgpa_dict.values() if v is not None and v > 0]
+        derived_cgpa = ug_norm.get("normalized_cgpa")
+        if (not derived_cgpa or derived_cgpa == 0.0) and valid_sgpas:
+            derived_cgpa = round(sum(valid_sgpas) / len(valid_sgpas), 2)
+            ug_norm["normalized_cgpa"] = derived_cgpa
+            ug_norm["verification_status"] = "VERIFIED"
+
 
         # Flags & Eligibility
         backlog_count_raw = get_val(row, "Backlog Count", "Current Backlogs", "No. of Backlogs")
@@ -640,24 +674,6 @@ async def process_excel_import(
         for student in canonical_records:
             mongo_doc = student.to_mongo_dict()
             
-            # Check for duplicate warning before saving
-            dup_res = await DuplicateDetectionService.check_duplicate(
-                institution_id=institution_id,
-                student_data={
-                    "roll_number": student.student_id,
-                    "institute_email": student.contact.institutional_email,
-                    "personal_email": student.contact.personal_email,
-                    "mobile": student.contact.mobile
-                }
-            )
-            if dup_res["is_duplicate"]:
-                await DuplicateDetectionService.record_duplicate_warning(
-                    institution_id=institution_id,
-                    detection_result=dup_res,
-                    source="excel_import",
-                    source_details={"source_file": source_filename, "batch_id": batch_id}
-                )
-
             filter_query = {
                 "institution_id": institution_id,
                 "$or": [
@@ -666,6 +682,27 @@ async def process_excel_import(
                     {"emails.institute": student.contact.institutional_email}
                 ]
             }
+            existing_student_doc = await db.db.students.find_one(filter_query)
+            exclude_id = str(existing_student_doc["_id"]) if existing_student_doc else None
+
+            # Only check for duplicate collision against OTHER students
+            dup_res = await DuplicateDetectionService.check_duplicate(
+                institution_id=institution_id,
+                student_data={
+                    "roll_number": student.student_id,
+                    "institute_email": student.contact.institutional_email,
+                    "personal_email": student.contact.personal_email,
+                    "mobile": student.contact.mobile
+                },
+                exclude_student_id=exclude_id
+            )
+            if dup_res["is_duplicate"]:
+                await DuplicateDetectionService.record_duplicate_warning(
+                    institution_id=institution_id,
+                    detection_result=dup_res,
+                    source="excel_import",
+                    source_details={"source_file": source_filename, "batch_id": batch_id}
+                )
             res = await db.db.students.update_one(filter_query, {"$set": mongo_doc}, upsert=True)
             if res.upserted_id:
                 inserted_count += 1

@@ -17,6 +17,7 @@ import {
   AnalyticsIcon,
   IdCardIcon,
   ChevronDownIcon,
+  FileSpreadsheetIcon,
 } from './Icons';
 
 interface TpoStudentHierarchyViewProps {
@@ -450,6 +451,48 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
               <RefreshIcon size={16} />
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await fetch('http://localhost:8000/api/bulk-students/template', {
+                  headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+                });
+                if (!res.ok) throw new Error('Failed to download template');
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Placement_Portal_Standard_Student_Template.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+              } catch (err) {
+                console.error('Template download error:', err);
+              }
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              height: 38,
+              background: 'rgba(59,130,246,0.1)',
+              color: '#2563EB',
+              border: '1px solid rgba(59,130,246,0.3)',
+              padding: '0 16px',
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              boxSizing: 'border-box',
+            }}
+            title="Download the canonical 46-column student master Excel template"
+          >
+            <FileSpreadsheetIcon size={16} color="#2563EB" />
+            <span>Download Template</span>
+          </button>
 
           {onShowBulkUpload && (
             <button

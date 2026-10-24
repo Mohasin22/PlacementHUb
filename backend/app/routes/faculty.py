@@ -111,7 +111,53 @@ async def register_faculty(payload: FacultyRegisterPayload, current_user: dict =
     }
     
     res = await db.db.users.insert_one(faculty_doc)
-    return {"message": "Faculty Coordinator registered successfully.", "faculty_id": str(res.inserted_id)}
+    faculty_id_str = str(res.inserted_id)
+
+    # Link class to this faculty coordinator
+    await db.db.classes.update_one(
+        id_query(payload.class_id),
+        {"$set": {"faculty_coordinator_id": faculty_id_str}}
+    )
+
+    return {"message": "Faculty Coordinator registered successfully.", "faculty_id": faculty_id_str}
+
+@router.delete("/{user_id}", dependencies=[Depends(RoleChecker(["TPO", "Dean"]))])
+async def remove_faculty(
+    user_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id),
+):
+    faculty = await db.db.users.find_one(id_query(user_id))
+    if not faculty or faculty.get("role") != "Faculty":
+        raise HTTPException(status_code=404, detail="Faculty coordinator not found.")
+
+    # Remove faculty coordinator assignment from any mapped classes
+    await db.db.classes.update_many(
+        {
+            "$or": [
+                {"faculty_coordinator_id": user_id},
+                {"faculty_coordinator_id": parse_id(user_id)},
+                {"faculty_coordinator_id": str(faculty.get("_id"))}
+            ]
+        },
+        {"$unset": {"faculty_coordinator_id": ""}}
+    )
+
+    # Remove user record
+    await db.db.users.delete_one(id_query(user_id))
+
+    await log_audit_event(
+        action="faculty_coordinator_removed",
+        actor=current_user.get("email", ""),
+        actor_role=current_user.get("role", "TPO"),
+        entity_type="User",
+        entity_id=user_id,
+        institution_id=institution_id,
+        details={"faculty_name": faculty.get("name"), "faculty_email": faculty.get("email")}
+    )
+
+    return {"message": f"Faculty Coordinator '{faculty.get('name')}' removed successfully."}
+
 
 # ── Canonical Faculty Approval Queue Endpoints ───────────────────────────────
 

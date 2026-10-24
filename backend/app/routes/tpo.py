@@ -115,22 +115,65 @@ async def list_tpo_drives(
     query = {"institution_id": institution_id}
     drives_cursor = db.db.placement_drives.find(query).sort("created_at", -1)
     drives = await drives_cursor.to_list(length=200)
+
+    # 1. Aggregate application counts for all drives in one single indexed query
+    pipeline = [
+        {"$match": {"institution_id": institution_id}},
+        {
+            "$group": {
+                "_id": {
+                    "drive_id": "$drive_id",
+                    "status": "$status"
+                },
+                "count": {"$sum": 1}
+            }
+        }
+    ]
+    app_stats = await db.db.applications.aggregate(pipeline).to_list(length=1000)
+    stats_map: Dict[str, Dict[str, int]] = {}
+    for item in app_stats:
+        d_id = str(item["_id"].get("drive_id") or "")
+        st = str(item["_id"].get("status") or "")
+        cnt = int(item.get("count", 0))
+        if d_id not in stats_map:
+            stats_map[d_id] = {"total": 0, "Shortlisted": 0, "Placed": 0, "Rejected": 0}
+        stats_map[d_id]["total"] += cnt
+        if st in stats_map[d_id]:
+            stats_map[d_id][st] += cnt
+
     now = datetime.now(timezone.utc)
     result = []
     for d in drives:
         drive_id = str(d["_id"])
-        total_apps = await db.db.applications.count_documents({"drive_id": drive_id})
-        shortlisted = await db.db.applications.count_documents({"drive_id": drive_id, "status": "Shortlisted"})
-        placed = await db.db.applications.count_documents({"drive_id": drive_id, "status": "Placed"})
-        rejected = await db.db.applications.count_documents({"drive_id": drive_id, "status": "Rejected"})
-        
+        counts = stats_map.get(drive_id, {"total": 0, "Shortlisted": 0, "Placed": 0, "Rejected": 0})
+
         deadline = d.get("drive_deadline")
-        if hasattr(deadline, "tzinfo") and deadline.tzinfo is None:
-            deadline = deadline.replace(tzinfo=timezone.utc)
-        elif isinstance(deadline, str):
-            try: deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
-            except ValueError: deadline = now
-            
+        parsed_deadline = None
+        if deadline is not None:
+            if isinstance(deadline, datetime):
+                parsed_deadline = deadline if deadline.tzinfo is not None else deadline.replace(tzinfo=timezone.utc)
+            elif isinstance(deadline, str):
+                try:
+                    clean_str = deadline.strip().replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(clean_str)
+                    parsed_deadline = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%d-%m-%Y"):
+                        try:
+                            parsed_deadline = datetime.strptime(deadline.strip(), fmt).replace(tzinfo=timezone.utc)
+                            break
+                        except ValueError:
+                            pass
+
+        is_active = (parsed_deadline > now) if parsed_deadline else True
+
+        # Provide a safe string representation for the frontend
+        dl_display = None
+        if parsed_deadline:
+            dl_display = parsed_deadline.isoformat()
+        elif deadline:
+            dl_display = str(deadline)
+
         result.append({
             "id": drive_id,
             "company_name": d.get("company_name"),
@@ -140,12 +183,12 @@ async def list_tpo_drives(
             "mode": d.get("mode"),
             "min_cgpa": d.get("min_cgpa"),
             "max_backlogs": d.get("max_backlogs"),
-            "drive_deadline": d.get("drive_deadline"),
-            "is_active": deadline > now if deadline else True,
-            "total_applicants": total_apps,
-            "shortlisted": shortlisted,
-            "placed": placed,
-            "rejected": rejected,
+            "drive_deadline": dl_display,
+            "is_active": is_active,
+            "total_applicants": counts["total"],
+            "shortlisted": counts["Shortlisted"],
+            "placed": counts["Placed"],
+            "rejected": counts["Rejected"],
             "external_apply_link": d.get("external_apply_link"),
             "gender_filter": d.get("gender_filter", "All"),
             "passout_year": d.get("passout_year", datetime.now().year),
@@ -838,7 +881,7 @@ async def list_events(
     return result
 
 # ── TPO Faculty Management ───────────────────────────────────────────────────
-@router.get("/faculty", dependencies=[Depends(RoleChecker(["TPO"]))])
+@router.get("/faculty", dependencies=[Depends(RoleChecker(["TPO", "Dean"]))])
 async def list_tpo_faculty(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id),
@@ -855,3 +898,41 @@ async def list_tpo_faculty(
         del f["_id"]
 
     return faculty_list
+
+@router.delete("/faculty/{user_id}", dependencies=[Depends(RoleChecker(["TPO", "Dean"]))])
+async def remove_tpo_faculty(
+    user_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id),
+):
+    faculty = await db.db.users.find_one(id_query(user_id))
+    if not faculty or faculty.get("role") != "Faculty":
+        raise HTTPException(status_code=404, detail="Faculty coordinator not found.")
+
+    # Remove faculty coordinator assignment from any mapped classes
+    await db.db.classes.update_many(
+        {
+            "$or": [
+                {"faculty_coordinator_id": user_id},
+                {"faculty_coordinator_id": parse_id(user_id)},
+                {"faculty_coordinator_id": str(faculty.get("_id"))}
+            ]
+        },
+        {"$unset": {"faculty_coordinator_id": ""}}
+    )
+
+    # Remove user record completely so email can be reused and no stale records remain
+    await db.db.users.delete_one(id_query(user_id))
+
+    await log_audit_event(
+        action="faculty_coordinator_removed",
+        actor=current_user.get("email", ""),
+        actor_role=current_user.get("role", "TPO"),
+        entity_type="User",
+        entity_id=user_id,
+        institution_id=institution_id,
+        details={"faculty_name": faculty.get("name"), "faculty_email": faculty.get("email")}
+    )
+
+    return {"message": f"Faculty Coordinator '{faculty.get('name')}' removed successfully."}
+
