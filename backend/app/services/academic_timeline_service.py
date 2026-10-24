@@ -150,11 +150,14 @@ async def get_or_create_class_section(
 async def get_student_academic_status(
     student: Dict[str, Any],
     current_date: Optional[datetime] = None,
-    institute_id: Optional[str] = None
+    institute_id: Optional[str] = None,
+    cached_calendar: Optional[Dict[str, Any]] = None,
+    cached_programs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Computes system-derived academic status (academic year, current study year, current semester)
     based on admission year, program duration, active academic calendar, and administrative overrides.
+    Supports optional cached_calendar and cached_programs to eliminate redundant DB lookups in batch loops.
     """
     if current_date is None:
         current_date = datetime.now(timezone.utc)
@@ -193,7 +196,13 @@ async def get_student_academic_status(
     prog = None
 
     if prog_id and inst_id:
-        prog = await db.db.programs.find_one(id_query(prog_id))
+        if cached_programs is not None and str(prog_id) in cached_programs:
+            prog = cached_programs[str(prog_id)]
+        else:
+            prog = await db.db.programs.find_one(id_query(prog_id))
+            if cached_programs is not None and prog:
+                cached_programs[str(prog_id)] = prog
+
         if prog:
             duration_years = int(prog.get("duration_years") or 4)
             total_semesters = int(prog.get("total_semesters") or (duration_years * 2))
@@ -209,8 +218,8 @@ async def get_student_academic_status(
             total_semesters = 4
 
     # 3. Resolve Active Academic Calendar
-    acad_cal = None
-    if inst_id:
+    acad_cal = cached_calendar
+    if not acad_cal and inst_id:
         acad_cal = await db.db.academic_calendars.find_one({"institution_id": inst_id, "active": True})
         if not acad_cal:
             acad_cal = await ensure_default_academic_calendar(inst_id)

@@ -1,7 +1,5 @@
 import React, { useState, useRef } from 'react';
 import {
-  FileSpreadsheetIcon,
-  UploadIcon,
   AlertCircleIcon,
   CheckCircleIcon,
   FolderIcon,
@@ -31,37 +29,7 @@ export const BulkStudentUpload: React.FC<BulkStudentUploadProps> = ({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDownloadTemplate = async () => {
-    setError(null);
-    try {
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      let res = await fetch(`${apiUrl}/bulk-students/template`, { headers });
-      if (!res.ok && res.status === 404) {
-        res = await fetch(`${apiUrl}/students/import/template`, { headers });
-      }
-      if (!res.ok) {
-        let errorMsg = 'Failed to download template';
-        try {
-          const errJson = await res.json();
-          if (errJson.detail) errorMsg = errJson.detail;
-        } catch (_) {}
-        throw new Error(errorMsg);
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'Placement_Portal_Standard_Student_Template.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-    } catch (err: any) {
-      setError(err.message || 'Template download error');
-    }
-  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -184,54 +152,6 @@ export const BulkStudentUpload: React.FC<BulkStudentUploadProps> = ({
         boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: 'linear-gradient(135deg,#2563EB,#6366F1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              flexShrink: 0,
-            }}
-          >
-            <FileSpreadsheetIcon size={22} color="#FFFFFF" />
-          </div>
-          <div>
-            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '1.05rem' }}>
-              Standard Student Master Upload & Validation
-            </h3>
-            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Standard 46-column schema with automatic Score Normalization, Board Conversions, and Faculty Assignment.
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={handleDownloadTemplate}
-          style={{
-            background: 'rgba(59,130,246,0.1)',
-            border: '1px solid rgba(59,130,246,0.3)',
-            color: '#2563EB',
-            padding: '8px 16px',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: 600,
-            fontSize: '0.84rem',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <UploadIcon size={15} color="#2563EB" />
-          <span>Download Standard Template (.xlsx)</span>
-        </button>
-      </div>
-
       {!previewData && !commitResult && (
         <div
           onClick={() => fileInputRef.current?.click()}
@@ -259,11 +179,11 @@ export const BulkStudentUpload: React.FC<BulkStudentUploadProps> = ({
           <div style={{ color: '#3B82F6', opacity: 0.85 }}>
             <FolderIcon size={44} color="#3B82F6" />
           </div>
-          <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+          <p style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
             {uploading ? 'Analyzing and Validating Spreadsheet...' : 'Click or Drag to Upload Student Master Excel'}
           </p>
           <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Supports standard template or legacy placement response sheets.
+            Supports standard template or legacy placement response sheets (.xlsx, .xls)
           </p>
         </div>
       )}

@@ -590,15 +590,16 @@ async def update_or_upload_student_resume(
     student_id: str,
     file: Optional[UploadFile] = File(None),
     resume_url: Optional[str] = Form(None),
+    doc_type: Optional[str] = Form("resume"),
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
     """
-    Upload a resume file (.pdf/.docx) or update resume URL link for a student.
+    Upload a resume file (.pdf/.docx) or certificate or update URL link for a student.
     Allowed for Student (own profile) or TPO, Faculty, Dean.
     """
     if current_user["role"] == "Student" and str(current_user["user_id"]) != student_id and parse_id(str(current_user["user_id"])) != parse_id(student_id):
-        raise HTTPException(status_code=403, detail="Students can only update their own resume.")
+        raise HTTPException(status_code=403, detail="Students can only update their own documents.")
         
     student = await db.db.students.find_one(id_query(student_id))
     if not student:
@@ -609,13 +610,14 @@ async def update_or_upload_student_resume(
     if file and file.filename:
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in [".pdf", ".docx"]:
-            raise HTTPException(status_code=400, detail="Only PDF and DOCX resume formats are supported.")
+            raise HTTPException(status_code=400, detail="Only PDF and DOCX document formats are supported.")
             
         file_bytes = await file.read()
         if len(file_bytes) > 15 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="File exceeds 15MB limit.")
             
-        unique_filename = f"resume_{uuid.uuid4()}{ext}"
+        safe_prefix = "cert" if doc_type in ["tech_certs", "achieve_certs", "technical_certificates", "achievement_certificates"] else "resume"
+        unique_filename = f"{safe_prefix}_{uuid.uuid4()}{ext}"
         filepath = os.path.join(UPLOAD_DIR, unique_filename)
         with open(filepath, "wb") as buffer:
             buffer.write(file_bytes)
@@ -624,30 +626,48 @@ async def update_or_upload_student_resume(
     elif resume_url and resume_url.strip():
         final_url = resume_url.strip()
     else:
-        raise HTTPException(status_code=400, detail="Please provide either a resume file or a valid resume URL link.")
+        raise HTTPException(status_code=400, detail="Please provide either a document file or a valid document URL link.")
         
-    update_data = {
-        "resume_url": final_url,
-        "documents.resume": final_url,
-        "documents.combined_documents": final_url,
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    
+    if doc_type in ["tech_certs", "technical_certificates"]:
+        update_data = {
+            "documents.technical_certificates": final_url,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        msg = "Technical certificates updated successfully."
+        audit_action = "student_tech_certs_updated"
+    elif doc_type in ["achieve_certs", "achievement_certificates"]:
+        update_data = {
+            "documents.achievement_certificates": final_url,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        msg = "Achievement certificates updated successfully."
+        audit_action = "student_achieve_certs_updated"
+    else:
+        update_data = {
+            "resume_url": final_url,
+            "documents.resume": final_url,
+            "documents.combined_documents": final_url,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        msg = "Resume updated successfully."
+        audit_action = "student_resume_updated"
+        
     await db.db.students.update_one(id_query(student_id), {"$set": update_data})
     
     await log_audit_event(
-        action="student_resume_updated",
+        action=audit_action,
         actor=current_user["email"],
         actor_role=current_user["role"],
         entity_type="StudentProfile",
         entity_id=student_id,
         institution_id=institution_id,
-        details={"resume_url": final_url}
+        details={"url": final_url, "doc_type": doc_type}
     )
     
     return {
         "success": True,
-        "message": "Resume updated successfully.",
+        "message": msg,
+        "document_url": final_url,
         "resume_url": final_url
     }
 
@@ -793,6 +813,7 @@ async def google_forms_webhook_endpoint(
 @router.get("/duplicates", dependencies=[Depends(RoleChecker(["Faculty", "TPO", "Dean"]))])
 async def list_duplicate_student_records(
     status_filter: Optional[str] = None,
+    unresolved_only: bool = True,
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
@@ -800,15 +821,24 @@ async def list_duplicate_student_records(
     query: Dict[str, Any] = {"institution_id": institution_id}
     if status_filter:
         query["status"] = status_filter
+    elif unresolved_only:
+        query["resolved_at"] = None
 
     cursor = db.db.duplicate_records.find(query).sort("created_at", -1)
-    duplicates = await cursor.to_list(length=200)
+    duplicates = await cursor.to_list(length=500)
 
     for d in duplicates:
         d["id"] = str(d["_id"])
         del d["_id"]
+        existing = d.get("existing_record") or {}
+        incoming = d.get("incoming_record") or {}
+        d["student_name"] = existing.get("name") or incoming.get("name") or "Unknown Student"
+        d["roll_number"] = d.get("matched_roll_number") or existing.get("roll_number") or incoming.get("roll_number") or ""
+        d["institute_email"] = d.get("matched_email") or existing.get("institute_email") or incoming.get("institute_email") or ""
+        d["mobile"] = existing.get("mobile") or incoming.get("mobile") or ""
+        d["department"] = existing.get("department") or incoming.get("department") or ""
 
-    return duplicates
+    return {"duplicates": duplicates, "total": len(duplicates)}
 
 @router.post("/duplicates/{duplicate_id}/resolve", dependencies=[Depends(RoleChecker(["Faculty", "TPO", "Dean"]))])
 async def resolve_duplicate_student_warning(
@@ -829,6 +859,35 @@ async def resolve_duplicate_student_warning(
         notes=payload.notes
     )
     return res
+
+@router.post("/duplicates/resolve-all", dependencies=[Depends(RoleChecker(["Faculty", "TPO", "Dean"]))])
+async def resolve_all_duplicate_student_warnings(
+    payload: DuplicateResolvePayload,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Resolves all unresolved duplicate student warnings for the institution."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    action = payload.action or "KEEP_EXISTING"
+    new_status = {
+        "CONFIRM_DUPLICATE": "DUPLICATE_CONFIRMED",
+        "KEEP_EXISTING": "RESOLVED_KEPT_EXISTING",
+        "MERGE": "RESOLVED_MERGED",
+        "REJECT_WARNING": "REJECTED_WARNING_UNIQUE"
+    }.get(action, "RESOLVED")
+
+    res = await db.db.duplicate_records.update_many(
+        {"institution_id": institution_id, "resolved_at": None},
+        {"$set": {
+            "status": new_status,
+            "resolution_action": action,
+            "resolved_at": now_iso,
+            "resolved_by": current_user.get("email"),
+            "resolved_by_user_id": current_user.get("user_id"),
+            "resolution_notes": payload.notes or "Bulk resolved"
+        }}
+    )
+    return {"success": True, "modified_count": res.modified_count, "action": action}
 
 # ── 7. Comprehensive Student Data Validation Reports ──────────────────────────
 

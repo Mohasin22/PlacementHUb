@@ -84,6 +84,17 @@
     grid-template-columns: repeat(12, 1fr);
     gap: 24px;
   }
+  .profile-academic-docs-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (min-width: 1024px) {
+    .profile-academic-docs-grid {
+      grid-template-columns: 360px 1fr;
+    }
+  }
   .card-hover {
     @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-primary/30;
   }

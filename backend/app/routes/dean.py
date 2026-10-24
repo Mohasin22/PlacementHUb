@@ -247,15 +247,23 @@ async def deactivate_user(
     user = await db.db.users.find_one(id_query(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    if user.get("role") == "Dean":
-        raise HTTPException(status_code=400, detail="Cannot deactivate Dean accounts.")
-    await db.db.users.update_one(
-        id_query(user_id),
-        {"$set": {"is_active": False, "deactivated_at": datetime.now(timezone.utc), "deactivated_by": current_user["user_id"]}}
-    )
+    if user.get("role") == "Faculty":
+        await db.db.classes.update_many(
+            {
+                "$or": [
+                    {"faculty_coordinator_id": user_id},
+                    {"faculty_coordinator_id": parse_id(user_id)},
+                    {"faculty_coordinator_id": str(user.get("_id"))}
+                ]
+            },
+            {"$unset": {"faculty_coordinator_id": ""}}
+        )
+
+    await db.db.users.delete_one(id_query(user_id))
     await db.db.audit_logs.insert_one({
-        "action": "user_deactivated", "institution_id": institution_id,
+        "action": "user_removed", "institution_id": institution_id,
         "user_id": current_user["user_id"], "target_user_id": user_id,
         "role": "Dean", "timestamp": datetime.now(timezone.utc), "status": "success",
     })
-    return {"message": f"{user['role']} account deactivated successfully."}
+    return {"message": f"{user['role']} account removed successfully."}
+

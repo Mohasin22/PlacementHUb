@@ -1,0 +1,1117 @@
+You are working on my existing PlacementHub project. Do NOT rebuild the application from scratch. First inspect and understand the existing codebase, database models, API routes, services, authentication, role-based access, TPO dashboard, student dashboard, eligibility engine, board conversion service, and current placement-drive creation/application workflow.
+
+The goal is to add an agentic AI layer to the existing PlacementHub system while preserving all existing functionality.
+
+IMPORTANT ARCHITECTURAL PRINCIPLE:
+
+The LLM must NOT become the source of truth and must NOT directly modify MongoDB.
+
+Use this architecture:
+
+LLM = interpretation/reasoning
+AI Agent = orchestration + controlled tool selection
+Existing backend services = authoritative business logic/calculations
+Validators = safety and correctness
+Human approval = required before consequential actions
+MongoDB = source of truth
+
+Do not replace existing deterministic services with LLM-generated logic.
+
+==================================================
+
+FIRST: ANALYZE THE EXISTING CODEBASE
+==================================================
+
+Before changing anything, inspect:
+
+backend/app/main.py
+backend/app/routes/
+backend/app/services/
+backend/app/models/
+backend/app/db/
+frontend/src/pages/
+frontend/src/components/
+frontend/src/App.tsx
+
+Especially understand:
+
+Authentication and authorization
+
+Institution/tenant isolation
+
+TPO role
+
+Student role
+
+Existing placement drive creation
+
+Existing drive editing
+
+Existing student eligibility evaluation
+
+Existing board/percentage/CGPA conversion
+
+Existing academic hierarchy
+
+Existing student profile structure
+
+Existing application workflow
+
+Existing audit functionality
+
+Existing notification functionality
+
+Do not duplicate functionality that already exists.
+
+Reuse existing services wherever possible.
+
+After understanding the codebase, implement the AI layer around it.
+
+==================================================
+2. CREATE THE AI ARCHITECTURE
+
+Create a clean backend structure similar to:
+
+backend/app/
+ai/
+init.py
+agent.py
+prompts.py
+schemas.py
+tools.py
+validators.py
+
+routes/ ai.py services/ ai_drive_service.py ai_student_match_service.py 
+
+Do not create one giant AI file.
+
+Keep the AI layer modular.
+
+==================================================
+3. LLM PROVIDER
+
+Make the LLM provider configurable through environment variables.
+
+Add configuration such as:
+
+AI_PROVIDER=
+AI_MODEL=
+AI_API_KEY=
+
+Do not hardcode API keys.
+
+Design the implementation so the LLM provider can be changed later without rewriting the agent architecture.
+
+Use structured JSON/schema-constrained output wherever supported.
+
+The LLM should never be allowed to execute arbitrary database queries or arbitrary Python code.
+
+==================================================
+4. BUILD THE AI AGENT
+
+Implement an agent orchestration layer.
+
+The agent should have a controlled set of tools/functions such as:
+
+get_institution_schema()
+get_academic_hierarchy()
+get_programs()
+get_departments()
+get_classes()
+get_academic_batches()
+get_drive_schema()
+get_conversion_rules()
+validate_drive_draft()
+get_student_profile(student_id)
+detect_student_data_issues(student_id)
+evaluate_student_eligibility(student_id, drive)
+get_existing_drive_requirements(drive_id)
+
+The agent must only access data belonging to the authenticated user's institution.
+
+Never allow the LLM to directly access MongoDB.
+
+The flow must be:
+
+AI Agent
+↓
+Controlled Tool
+↓
+Existing Backend Service / Database Query
+↓
+Tool Result
+↓
+AI Agent
+
+==================================================
+5. TPO FEATURE — AI JOB DESCRIPTION ANALYZER
+
+Add a new TPO workflow:
+
+"Create Placement Drive with AI"
+
+The TPO should be able to paste an unstructured Job Description.
+
+Example:
+
+"We are looking for Software Engineers for our Hyderabad office.
+Candidates should have a B.Tech degree in CSE/IT or related disciplines,
+CGPA of 7.5 or above, no active backlogs, and should graduate in 2026.
+Strong knowledge of Java and Python is preferred.
+Package is 12 LPA."
+
+The AI should extract structured information.
+
+The output should contain fields such as:
+
+company_name
+job_role
+package
+location
+mode
+minimum_cgpa
+minimum_ug_percentage
+minimum_10th_percentage
+minimum_12th_percentage
+maximum_backlogs
+maximum_total_backlogs
+allowed_programs
+allowed_departments
+allowed_classes
+target_batches
+passout_year
+education_gap_allowed
+first_attempt_required
+gender_filter
+required_skills
+external_apply_link
+drive_deadline
+interview_date
+other_requirements
+
+Do NOT invent information.
+
+If information is absent, return null and explicitly identify it as missing.
+
+==================================================
+6. MAP AI OUTPUT TO THE ACTUAL DATABASE
+
+Do not simply store raw text such as:
+
+"CSE"
+"IT"
+"B.Tech"
+
+Map extracted requirements to the actual academic hierarchy and IDs already present in the PlacementHub database.
+
+For example:
+
+JD:
+"Computer Science and Information Technology"
+
+AI:
+↓
+get_academic_hierarchy()
+↓
+find matching departments
+↓
+return actual department IDs
+
+Every mapping should contain:
+
+field
+value
+database_mapping
+source/evidence
+confidence
+status
+
+Example:
+
+{
+"field": "department",
+"value": "Computer Science Engineering",
+"mapped_id": "...",
+"confidence": 0.97,
+"status": "matched"
+}
+
+If the AI cannot confidently map something, mark it ambiguous instead of guessing.
+
+==================================================
+7. AI DRIVE DRAFT SYSTEM
+
+Do NOT immediately create a live placement drive after analyzing the JD.
+
+Create an AI draft first.
+
+Introduce a lifecycle:
+
+DRAFT
+↓
+NEEDS_INPUT
+↓
+READY_FOR_REVIEW
+↓
+APPROVED
+↓
+PUBLISHED
+↓
+CLOSED
+
+Create a suitable collection/model such as:
+
+ai_drive_drafts
+
+The draft should contain:
+
+institution_id
+created_by
+status
+source_jd
+extracted_requirements
+mapped_requirements
+missing_fields
+validation_issues
+ambiguous_fields
+confidence
+created_at
+updated_at
+approved_by
+approved_at
+published_drive_id
+
+==================================================
+8. MISSING INFORMATION
+
+If required information is missing, the AI must NOT invent it.
+
+For example, if the JD does not contain:
+
+company name
+application deadline
+interview date
+application link
+
+show:
+
+"Missing Information"
+
+and ask the TPO to provide it.
+
+The system should allow the TPO to provide missing information and then re-run validation.
+
+Example:
+
+Missing:
+
+Company name
+
+Application deadline
+
+TPO enters:
+
+Company name: ABC Technologies
+Deadline: 25 November 2026
+
+The draft should update and move toward READY_FOR_REVIEW.
+
+==================================================
+9. DRIVE VALIDATION
+
+Create a validation layer.
+
+The AI-generated drive must be validated against:
+
+Existing drive schema
+
+Academic hierarchy
+
+Existing eligibility engine
+
+Valid numeric ranges
+
+Valid dates
+
+Valid departments/programs/classes
+
+Existing conversion rules
+
+Tenant/institution ownership
+
+Required fields
+
+Examples:
+
+CGPA must be within valid range.
+
+Percentage must be within valid range.
+
+Passout year must be reasonable.
+
+Department IDs must actually exist.
+
+Program IDs must actually exist.
+
+Deadline must be valid.
+
+Never trust the LLM output blindly.
+
+==================================================
+10. TPO REVIEW UI
+
+Add a new TPO dashboard workflow.
+
+The TPO should see:
+
+CREATE PLACEMENT DRIVE WITH AI
+
+[Paste Job Description]
+
+[Analyze JD]
+
+After analysis:
+
+AI EXTRACTED REQUIREMENTS
+
+Company
+✓ ABC Technologies
+
+Role
+✓ Software Engineer
+
+Package
+✓ 12 LPA
+
+Location
+✓ Hyderabad
+
+Minimum CGPA
+✓ 7.5
+
+Maximum Backlogs
+✓ 0
+
+Passout Year
+✓ 2026
+
+Departments
+✓ CSE
+✓ IT
+
+Skills
+✓ Java
+✓ Python
+
+Then show:
+
+MISSING INFORMATION
+
+⚠ Application deadline
+⚠ Interview date
+
+Then:
+
+VALIDATION
+
+✓ Drive schema valid
+✓ Academic mappings valid
+✓ Eligibility rules valid
+
+The TPO must be able to edit every extracted field before approval.
+
+Buttons:
+
+[Edit Draft]
+
+[Re-analyze]
+
+[Validate]
+
+[Approve & Publish]
+
+==================================================
+11. HUMAN APPROVAL
+
+The AI must NEVER automatically publish a placement drive.
+
+Only after the TPO clicks:
+
+Approve & Publish
+
+should the system perform the authoritative operation.
+
+Before publishing:
+
+Verify authenticated TPO.
+
+Verify institution ownership.
+
+Validate the draft again.
+
+Re-run deterministic eligibility validation.
+
+Call the existing placement-drive creation service.
+
+Create the real placement drive.
+
+Trigger the existing notification system.
+
+Record an audit event.
+
+Reuse the existing placement-drive creation workflow instead of duplicating it.
+
+==================================================
+12. EXISTING ELIGIBILITY ENGINE
+
+Do not implement a second AI eligibility engine.
+
+Use the existing:
+
+eligibility_engine.py
+
+The AI may explain requirements and identify relevant fields.
+
+The final eligibility decision must come from the existing deterministic eligibility engine.
+
+Architecture:
+
+AI
+↓
+Understands JD
+↓
+Maps requirements
+↓
+Creates structured drive
+↓
+Existing eligibility_engine
+↓
+Final eligibility decision
+
+==================================================
+13. BOARD / CGPA / PERCENTAGE CONVERSION
+
+Use the existing:
+
+board_conversion_service.py
+
+Do NOT allow the LLM to independently calculate official academic conversions.
+
+The AI should identify:
+
+Student's board
+
+Qualification
+
+Passing year
+
+Existing score type
+
+Required score type
+
+Then call the deterministic conversion service.
+
+Example:
+
+Student:
+Board = CBSE
+Score type = CGPA
+
+Job requirement:
+10th percentage ≥ 75%
+
+AI identifies that a conversion is required.
+
+Then:
+
+AI
+↓
+find_matching_conversion_rule()
+↓
+board_conversion_service
+↓
+normalized percentage
+↓
+eligibility_engine
+
+Store:
+
+raw value
+normalized value
+conversion_rule_id
+conversion method
+verification status
+
+The AI must explain which conversion rule was used.
+
+==================================================
+14. STUDENT AI MATCHING AGENT
+
+After the TPO AI workflow is stable, implement the student-side AI agent.
+
+Add:
+
+"AI Match"
+
+to the student placement-drive experience.
+
+The agent should compare:
+
+Placement Drive Requirements
++
+Student Profile
+↓
+AI Matching
+↓
+Data Quality Checks
+↓
+Deterministic Eligibility Engine
+↓
+AI Explanation
+
+The student should receive a result such as:
+
+AI MATCH RESULT
+
+Requirement Your Data Result
+
+B.Tech CSE/IT B.Tech CSE ✓
+Passout 2026 2026 ✓
+CGPA >= 7.5 8.21 ✓
+Backlogs = 0 0 ✓
+Java Java ✓
+Python Python ✓
+Resume Available ✓
+
+Final:
+✓ Eligible
+
+Also distinguish:
+
+MANDATORY REQUIREMENTS
+PREFERRED REQUIREMENTS
+MISSING REQUIREMENTS
+DATA ISSUES
+
+Do not treat preferred skills as mandatory eligibility criteria unless the drive explicitly says so.
+
+==================================================
+15. STUDENT DATA QUALITY AGENT
+
+The AI should detect potential issues such as:
+
+Missing information
+
+Invalid formatting
+
+Typographical errors
+
+Inconsistent values
+
+Suspicious academic data
+
+Missing resume
+
+Missing GitHub
+
+Missing required documents
+
+Incorrect score representation
+
+Potential mismatch between academic fields
+
+Example:
+
+Student skill:
+
+"Pyhton"
+
+AI:
+
+Possible typo:
+"Pyhton" → "Python"
+
+Confidence: 99%
+
+Buttons:
+
+[Accept Correction]
+[Keep Original]
+
+The AI must NEVER silently modify authoritative student data.
+
+Any correction must go through:
+
+AI suggestion
+↓
+Student/Faculty approval
+↓
+Backend validation
+↓
+Database update
+↓
+Audit log
+
+==================================================
+16. STUDENT APPROVAL BEFORE APPLICATION
+
+The student must explicitly approve the AI assessment before application.
+
+Example:
+
+AI found:
+
+7/7 mandatory requirements satisfied.
+
+1 academic conversion was required.
+
+The student should see:
+
+[Review AI Assessment]
+
+then:
+
+[Approve & Continue]
+
+then use the existing application workflow.
+
+Do not bypass the existing application validation.
+
+==================================================
+17. DATA PROVENANCE
+
+Clearly distinguish between:
+
+AUTHORITATIVE DATA
+Data directly stored in the PlacementHub database.
+
+DERIVED DATA
+AI interpretation, matching, normalized values, calculations.
+
+PROPOSED DATA
+AI suggestions/corrections.
+
+The UI should make this distinction clear.
+
+Never overwrite authoritative data simply because the LLM suggested something.
+
+==================================================
+18. AUDIT LOGGING
+
+Extend the existing audit functionality for AI actions.
+
+Create events such as:
+
+ai_drive_analysis_started
+ai_drive_draft_created
+ai_drive_missing_information_detected
+ai_drive_validation_completed
+ai_drive_approved
+ai_drive_published
+
+ai_data_issue_detected
+ai_conversion_suggested
+ai_correction_accepted
+
+ai_student_match_generated
+ai_student_match_approved
+
+Record where appropriate:
+
+actor
+role
+institution_id
+entity_id
+timestamp
+action
+AI model/provider
+confidence
+before/after values
+approval information
+
+Do not log sensitive data unnecessarily.
+
+==================================================
+19. SECURITY
+
+This is a multi-tenant placement system.
+
+Every AI tool must enforce:
+
+authenticated user
+role
+institution_id
+
+The AI must never be able to retrieve another institution's students, departments, drives, or academic hierarchy.
+
+Never give the LLM raw database credentials.
+
+Never expose:
+
+MONGO_URI
+AI_API_KEY
+password hashes
+authentication secrets
+private documents
+
+Do not allow arbitrary tool execution.
+
+Use allowlisted backend functions only.
+
+Also inspect the current CORS configuration and ensure AI endpoints are not introducing additional security problems.
+
+==================================================
+20. API DESIGN
+
+Create appropriate endpoints under:
+
+/api/ai/
+
+For example:
+
+POST /api/ai/drives/analyze
+
+POST /api/ai/drives/{draft_id}/complete-missing-info
+
+GET /api/ai/drives/{draft_id}
+
+POST /api/ai/drives/{draft_id}/validate
+
+PUT /api/ai/drives/{draft_id}
+
+POST /api/ai/drives/{draft_id}/approve
+
+POST /api/ai/students/{student_id}/match/{drive_id}
+
+GET /api/ai/students/{student_id}/issues
+
+POST /api/ai/students/{student_id}/issues/{issue_id}/accept
+
+Adjust these endpoints if the existing architecture suggests better naming.
+
+Do not create redundant APIs.
+
+==================================================
+21. FRONTEND
+
+Integrate the AI workflow into the existing React/Tailwind UI.
+
+Do not redesign the entire application.
+
+Maintain the existing visual language.
+
+TPO:
+
+Add an AI-assisted drive creation flow.
+
+Student:
+
+Add AI matching to existing drive/application workflow.
+
+Use loading states.
+
+Use error states.
+
+Show AI confidence where useful.
+
+Show missing information clearly.
+
+Show validation errors clearly.
+
+Never make the interface imply that AI decisions are automatically authoritative.
+
+==================================================
+22. AI EXPLAINABILITY
+
+Whenever possible, show WHY the AI mapped something.
+
+Example:
+
+JD says:
+"Candidates from Computer Science or IT."
+
+AI mapping:
+
+Computer Science Engineering → matched to department X
+Information Technology → matched to department Y
+
+Confidence:
+97%
+
+If ambiguous:
+
+"Related disciplines" could refer to ECE/EIE/etc.
+
+Do not automatically include ambiguous departments.
+
+Ask TPO to confirm.
+
+==================================================
+23. FAILURE HANDLING
+
+The system must gracefully handle:
+
+LLM unavailable
+API timeout
+invalid LLM JSON
+rate limits
+malformed JD
+ambiguous department
+missing database data
+missing conversion rule
+invalid student profile
+database failure
+
+The AI should never partially publish a drive.
+
+Use transactions/atomic operations where appropriate.
+
+If AI fails, the existing manual drive creation workflow must continue working.
+
+==================================================
+24. KEEP MANUAL WORKFLOW
+
+Do NOT remove the existing manual drive creation functionality.
+
+The TPO should have:
+
+[Create Manually]
+
+and
+
+[Create with AI]
+
+The AI system is an enhancement, not a replacement.
+
+==================================================
+25. TESTING
+
+Create tests for:
+
+JD extraction
+
+JD → schema mapping
+
+missing information detection
+
+academic hierarchy mapping
+
+ambiguous mapping
+
+drive validation
+
+tenant isolation
+
+AI draft creation
+
+approval workflow
+
+conversion rule selection
+
+student matching
+
+data-quality detection
+
+AI failure handling
+
+authorization
+
+Make sure existing tests and functionality continue working.
+
+==================================================
+26. IMPLEMENTATION ORDER
+
+Do not attempt everything at once.
+
+Implement in this order:
+
+PHASE 1
+AI infrastructure
+
+configuration
+
+LLM provider abstraction
+
+schemas
+
+agent
+
+tools
+
+validators
+
+PHASE 2
+TPO JD analyzer
+
+JD input
+
+structured extraction
+
+DB mapping
+
+missing information
+
+PHASE 3
+AI drive drafts
+
+draft collection
+
+draft APIs
+
+validation
+
+TPO review UI
+
+PHASE 4
+Approval
+
+approve endpoint
+
+existing drive creation integration
+
+notifications
+
+audit logging
+
+PHASE 5
+Student AI matching
+
+profile matching
+
+eligibility explanation
+
+conversion integration
+
+AI match UI
+
+PHASE 6
+Data-quality system
+
+issue detection
+
+suggested corrections
+
+approval workflow
+
+audit
+
+==================================================
+27. IMPORTANT: DO NOT BREAK EXISTING CODE
+
+Before modifying an existing function, understand its current callers and behavior.
+
+Prefer adding new services/routes/components over rewriting stable existing functionality.
+
+Reuse:
+
+existing authentication
+existing institution/tenant system
+existing eligibility_engine
+existing board_conversion_service
+existing academic_timeline_service
+existing placement drive APIs
+existing application APIs
+existing audit service
+existing notification system
+
+Do not duplicate business logic.
+
+==================================================
+28. FINAL EXPECTED USER EXPERIENCE
+
+TPO:
+
+Paste JD
+↓
+Analyze with AI
+↓
+AI extracts requirements
+↓
+AI maps requirements to PlacementHub schema/database
+↓
+AI detects missing/ambiguous information
+↓
+TPO provides missing information
+↓
+AI validates
+↓
+TPO reviews draft
+↓
+TPO approves
+↓
+Existing PlacementHub drive is created
+↓
+Existing eligibility engine determines eligible students
+↓
+Existing notification system notifies students
+
+Student:
+
+Open placement drive
+↓
+AI Match
+↓
+AI maps requirements against profile
+↓
+AI checks data quality
+↓
+Existing conversion service normalizes academic values
+↓
+Existing eligibility engine determines actual eligibility
+↓
+AI explains result
+↓
+Student reviews
+↓
+Student approves
+↓
+Existing application workflow executes
+
+==================================================
+29. IMPORTANT DEVELOPMENT RULE
+
+Before writing code, inspect the relevant existing files and determine exactly where each feature belongs.
+
+Do not make assumptions about the existing schema.
+
+Do not invent database fields when an equivalent field already exists.
+
+Do not replace existing services unnecessarily.
+
+After implementation, provide a concise summary of:
+
+Files created
+
+Files modified
+
+New API endpoints
+
+New database collections/models
+
+AI tools implemented
+
+Existing services reused
+
+Environment variables required
+
+How to run the system
+
+How to test the complete TPO workflow
+
+How to test the complete student workflow
+
+Most importantly:
+
+Build this as a REAL agentic AI system integrated into the existing PlacementHub architecture, not as a simple chatbot and not as an LLM that directly writes to MongoDB.
+
+The final architecture should demonstrate:
+
+Unstructured input
+→ AI reasoning
+→ controlled tools
+→ database/context retrieval
+→ structured proposal
+→ deterministic validation
+→ human approval
+→ existing business logic
+→ authoritative database action.

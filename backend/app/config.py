@@ -18,4 +18,10 @@ class Settings:
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")  # Gmail App Password
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "PlacementHub")
 
+    # AI Configuration (Agentic AI Layer)
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "auto")  # "gemini", "openai", "mock", "auto"
+    AI_MODEL: str = os.getenv("AI_MODEL", "gemini-1.5-flash")
+    AI_API_KEY: str = os.getenv("AI_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("OPENAI_API_KEY", "")))
+
 settings = Settings()
+
