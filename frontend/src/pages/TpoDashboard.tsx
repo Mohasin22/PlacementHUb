@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { BulkStudentUpload } from '../components/BulkStudentUpload';
 import { TpoStudentHierarchyView } from '../components/TpoStudentHierarchyView';
 import { AiDriveModal } from '../components/AiDriveModal';
+import { DriveStudentExcelSelector } from '../components/DriveStudentExcelSelector';
 import {
   AnalyticsIcon,
   CalendarIcon,
@@ -64,6 +65,8 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
   const [tab, setTabState] = useState<Tab>('drives');
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isAiDriveModalOpen, setIsAiDriveModalOpen] = useState(false);
+  const [isExcelSelectorOpen, setIsExcelSelectorOpen] = useState(false);
+  const [excelSelectorDrive, setExcelSelectorDrive] = useState<any | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [driveFilter, setDriveFilter] = useState<'active' | 'closed'>('active');
 
@@ -844,22 +847,48 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                             {d.allowed_departments?.length || 1} eligible dept(s)
                           </span>
 
-                          <button
-                            onClick={() => openApplicants(d)}
-                            style={{
-                              background: 'var(--bg-main)',
-                              border: '1px solid var(--border-color)',
-                              color: 'var(--text-primary)',
-                              padding: '6px 18px',
-                              borderRadius: 8,
-                              fontWeight: 600,
-                              fontSize: '0.84rem',
-                              cursor: 'pointer',
-                              transition: 'all 0.15s ease',
-                            }}
-                          >
-                            Manage
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <button
+                              onClick={() => {
+                                setExcelSelectorDrive(d);
+                                setIsExcelSelectorOpen(true);
+                              }}
+                              style={{
+                                background: 'rgba(16, 124, 65, 0.12)',
+                                border: '1px solid rgba(16, 124, 65, 0.35)',
+                                color: '#107C41',
+                                padding: '6px 14px',
+                                borderRadius: 8,
+                                fontWeight: 700,
+                                fontSize: '0.84rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                transition: 'all 0.15s ease',
+                              }}
+                              title="Select branch, year, section and filter students via Excel sheet"
+                            >
+                              <FileSpreadsheetIcon size={15} /> Select Students
+                            </button>
+
+                            <button
+                              onClick={() => openApplicants(d)}
+                              style={{
+                                background: 'var(--bg-main)',
+                                border: '1px solid var(--border-color)',
+                                color: 'var(--text-primary)',
+                                padding: '6px 18px',
+                                borderRadius: 8,
+                                fontWeight: 600,
+                                fontSize: '0.84rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              Manage
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1167,6 +1196,24 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                   </button>
                   <button onClick={() => { deleteDrive(selectedDrive.id); setTab('drives'); }} style={{ ...s.ghostBtn, color: '#EF4444', background: 'rgba(239,68,68,0.08)' }}>
                     Delete Drive
+                  </button>
+                  <button
+                    onClick={() => {
+                      setExcelSelectorDrive(selectedDrive);
+                      setIsExcelSelectorOpen(true);
+                    }}
+                    style={{
+                      ...s.ghostBtn,
+                      background: 'rgba(16, 124, 65, 0.12)',
+                      color: '#107C41',
+                      border: '1px solid rgba(16, 124, 65, 0.35)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontWeight: 700,
+                    }}
+                  >
+                    <FileSpreadsheetIcon size={16} /> Select Students (Excel Sheet)
                   </button>
                   <div>
                     <h3 style={s.formTitle}>{selectedDrive.company_name} — Applicants ({applicants.length})</h3>
@@ -2036,6 +2083,27 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
         departments={allDepts}
         programs={hierarchy}
       />
+
+      {/* ── EXCEL CANDIDATE STUDENT SELECTOR MODAL ── */}
+      {isExcelSelectorOpen && excelSelectorDrive && (
+        <DriveStudentExcelSelector
+          token={token}
+          drive={excelSelectorDrive}
+          isOpen={isExcelSelectorOpen}
+          onClose={() => {
+            setIsExcelSelectorOpen(false);
+            setExcelSelectorDrive(null);
+          }}
+          onSelectionComplete={(count) => {
+            flash(`Successfully processed ${count} student(s) for ${excelSelectorDrive.company_name}!`);
+            loadDrives();
+            if (selectedDrive?.id === excelSelectorDrive.id) {
+              loadApplicants(excelSelectorDrive.id);
+            }
+          }}
+          hierarchy={hierarchy}
+        />
+      )}
     </div>
   );
 };

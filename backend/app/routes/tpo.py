@@ -31,10 +31,16 @@ class BulkStatusUpdate(BaseModel):
     application_ids: List[str]
     status: str
 
+from app.services.eligibility_engine import evaluate_student_eligibility_detailed
+
 class PlaceStudentPayload(BaseModel):
     offer_letter_url: Optional[str] = None
     ctc_offered: Optional[str] = None
     joining_date: Optional[str] = None
+
+class SelectStudentsForDrivePayload(BaseModel):
+    student_ids: List[str]
+    status: Optional[str] = "Selected"
 
 # ── TPO Hierarchy Scoped to Program ──────────────────────────────────────────
 @router.get("/hierarchy", dependencies=[Depends(RoleChecker(["TPO"]))])
@@ -572,6 +578,231 @@ async def bulk_select_applications(
     )
 
     return {"message": f"{updated} application(s) selected.", "updated_count": updated}
+
+@router.get("/drives/{drive_id}/candidate-pool", dependencies=[Depends(RoleChecker(["TPO", "Dean"]))])
+async def get_drive_candidate_pool(
+    drive_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Fetches candidate students across branches/years/sections with real-time eligibility evaluation for this drive."""
+    drive = await db.db.placement_drives.find_one(id_query(drive_id))
+    if not drive:
+        raise HTTPException(status_code=404, detail="Placement drive not found.")
+
+    students_cursor = db.db.students.find({
+        "institution_id": institution_id,
+        "status": {"$nin": ["blocked", "rejected", "inactive", "BLOCKED", "REJECTED"]}
+    }).sort("student_id", 1)
+    all_students = await students_cursor.to_list(length=3000)
+
+    apps_cursor = db.db.applications.find({"drive_id": drive_id, "institution_id": institution_id})
+    all_apps = await apps_cursor.to_list(length=3000)
+    apps_by_student_id = {str(a["student_id"]): a for a in all_apps}
+
+    now_utc = datetime.now(timezone.utc)
+    from app.services.academic_timeline_service import get_student_academic_status, ensure_default_academic_calendar
+    cached_cal = await db.db.academic_calendars.find_one({"institution_id": institution_id, "active": True})
+    if not cached_cal:
+        cached_cal = await ensure_default_academic_calendar(institution_id)
+
+    raw_progs = await db.db.programs.find({"institution_id": institution_id}).to_list(length=100)
+    cached_progs = {str(p["_id"]): p for p in raw_progs}
+    for p in raw_progs:
+        if "id" in p:
+            cached_progs[str(p["id"])] = p
+
+    candidates = []
+    for st in all_students:
+        st_id = str(st["_id"])
+        derived = await get_student_academic_status(
+            st,
+            current_date=now_utc,
+            institute_id=institution_id,
+            cached_calendar=cached_cal,
+            cached_programs=cached_progs
+        )
+        is_el, reasons, breakdown = evaluate_student_eligibility_detailed(st, drive, derived_status=derived)
+        existing_app = apps_by_student_id.get(st_id)
+
+        name = st.get("name") or st.get("identity", {}).get("full_name") or "Student"
+        roll = st.get("roll_number") or st.get("student_id") or ""
+        dept_name = st.get("department_name") or st.get("academic_identity", {}).get("department_name") or "General"
+        dept_id = str(st.get("department_id") or st.get("academic_identity", {}).get("department_id") or dept_name)
+        class_name = st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "Section A"
+        class_id = str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or class_name)
+
+        cgpa = float(st.get("cgpa") or st.get("education", {}).get("undergraduate", {}).get("normalized_cgpa") or 0.0)
+        active_backlogs = int(st.get("active_backlogs") if st.get("active_backlogs") is not None else st.get("eligibility_data", {}).get("current_backlogs", 0))
+        tenth_pct = st.get("education", {}).get("secondary", {}).get("normalized_percentage")
+        twelfth_pct = st.get("education", {}).get("higher_secondary_or_diploma", {}).get("normalized_percentage")
+
+        candidates.append({
+            "student_id": st_id,
+            "name": name,
+            "roll_number": roll,
+            "email": st.get("contact", {}).get("institutional_email") or st.get("emails", {}).get("institute") or st.get("contact", {}).get("personal_email") or "",
+            "mobile": st.get("mobile") or st.get("contact", {}).get("mobile") or "",
+            "department_id": dept_id,
+            "department_name": dept_name,
+            "class_id": class_id,
+            "class_name": class_name,
+            "current_study_year": derived.get("current_study_year", 4),
+            "study_year_label": derived.get("study_year_label", "4th Year"),
+            "passout_year": st.get("passout_year") or st.get("academic_identity", {}).get("expected_graduation_year") or st.get("academic_identity", {}).get("graduation_year"),
+            "cgpa": cgpa,
+            "active_backlogs": active_backlogs,
+            "total_backlogs": int(st.get("total_backlogs") if st.get("total_backlogs") is not None else st.get("eligibility_data", {}).get("backlog_count", 0)),
+            "tenth_percentage": tenth_pct,
+            "twelfth_percentage": twelfth_pct,
+            "gender": st.get("gender") or st.get("identity", {}).get("gender") or "Not Specified",
+            "resume_url": st.get("resume_url") or st.get("documents", {}).get("resume") or "",
+            "is_eligible": is_el,
+            "eligibility_reasons": reasons,
+            "eligibility_breakdown": breakdown,
+            "application_status": existing_app.get("status") if existing_app else "Not Applied",
+            "application_id": str(existing_app["_id"]) if existing_app else None
+        })
+
+    drive_summary = {
+        "id": drive_id,
+        "company_name": drive.get("company_name"),
+        "job_role": drive.get("job_role"),
+        "package": drive.get("package"),
+        "min_cgpa": drive.get("min_cgpa", 0.0),
+        "max_backlogs": drive.get("max_backlogs", 0),
+        "min_tenth_percentage": drive.get("min_tenth_percentage"),
+        "min_twelfth_percentage": drive.get("min_twelfth_percentage"),
+        "passout_year": drive.get("passout_year"),
+        "allowed_departments": drive.get("allowed_departments", []),
+        "allowed_programs": drive.get("allowed_programs", []),
+        "gender_filter": drive.get("gender_filter", "All"),
+        "mode": drive.get("mode", "On-campus")
+    }
+
+    return {
+        "drive": drive_summary,
+        "total_candidates": len(candidates),
+        "candidates": candidates
+    }
+
+@router.post("/drives/{drive_id}/select-students", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def select_students_for_drive(
+    drive_id: str,
+    payload: SelectStudentsForDrivePayload,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Enrolls/selects candidate students for a drive directly with candidate snapshot and status history."""
+    drive = await db.db.placement_drives.find_one(id_query(drive_id))
+    if not drive:
+        raise HTTPException(status_code=404, detail="Placement drive not found.")
+
+    if not payload.student_ids:
+        raise HTTPException(status_code=400, detail="No student IDs provided.")
+
+    target_status = payload.status or "Selected"
+    if target_status not in VALID_STATUSES:
+        target_status = "Selected"
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    selected_count = 0
+    notifications_to_insert = []
+
+    for st_id in payload.student_ids:
+        st = await db.db.students.find_one(id_query(st_id))
+        if not st:
+            continue
+
+        existing_app = await db.db.applications.find_one({"student_id": st_id, "drive_id": drive_id})
+        history_entry = {
+            "status": target_status,
+            "timestamp": now_iso,
+            "changed_by": current_user["email"],
+            "reason": f"Marked as {target_status} via Excel Student Selection tool"
+        }
+
+        if existing_app:
+            await db.db.applications.update_one(
+                id_query(str(existing_app["_id"])),
+                {
+                    "$set": {"status": target_status, "updated_at": now_iso},
+                    "$push": {"status_history": history_entry}
+                }
+            )
+            selected_count += 1
+        else:
+            profile_snapshot = {
+                "name": st.get("name") or st.get("identity", {}).get("full_name"),
+                "roll_number": st.get("roll_number") or st.get("student_id"),
+                "institutional_email": st.get("contact", {}).get("institutional_email") or st.get("emails", {}).get("institute"),
+                "personal_email": st.get("contact", {}).get("personal_email") or st.get("emails", {}).get("personal"),
+                "mobile": st.get("mobile") or st.get("contact", {}).get("mobile"),
+                "program": st.get("program_name") or st.get("academic_identity", {}).get("program_name"),
+                "department": st.get("department_name") or st.get("academic_identity", {}).get("department_name"),
+                "class_section": st.get("class_name") or st.get("academic_identity", {}).get("class_name"),
+                "passout_year": st.get("passout_year") or st.get("academic_identity", {}).get("graduation_year"),
+                "skills": st.get("skills", []),
+                "projects": st.get("projects", []),
+                "internships": st.get("internships", []),
+                "certifications": st.get("certifications", []),
+                "links": st.get("links", {}),
+                "resume_url": st.get("resume_url") or st.get("documents", {}).get("resume")
+            }
+            academic_snapshot = {
+                "tenth_percentage": st.get("education", {}).get("secondary", {}).get("normalized_percentage"),
+                "tenth_board": st.get("education", {}).get("secondary", {}).get("board"),
+                "twelfth_percentage": st.get("education", {}).get("higher_secondary_or_diploma", {}).get("normalized_percentage"),
+                "twelfth_board": st.get("education", {}).get("higher_secondary_or_diploma", {}).get("board"),
+                "ug_cgpa": st.get("cgpa") or st.get("education", {}).get("undergraduate", {}).get("normalized_cgpa"),
+                "ug_percentage": st.get("education", {}).get("undergraduate", {}).get("normalized_percentage"),
+                "current_backlogs": st.get("active_backlogs") if st.get("active_backlogs") is not None else st.get("eligibility_data", {}).get("current_backlogs"),
+                "total_backlogs": st.get("total_backlogs") if st.get("total_backlogs") is not None else st.get("eligibility_data", {}).get("backlog_count"),
+                "education_gap": st.get("eligibility_data", {}).get("education_gap") or "No",
+                "first_attempt_status": st.get("eligibility_data", {}).get("first_attempt_status") or "Yes"
+            }
+            new_app = {
+                "student_id": st_id,
+                "drive_id": drive_id,
+                "institution_id": institution_id,
+                "profile_snapshot": profile_snapshot,
+                "academic_snapshot": academic_snapshot,
+                "resume_version": profile_snapshot.get("resume_url"),
+                "status": target_status,
+                "status_history": [history_entry],
+                "applied_at": now_iso,
+                "selected_by_tpo": True
+            }
+            await db.db.applications.insert_one(new_app)
+            selected_count += 1
+
+        notifications_to_insert.append({
+            "student_id": st_id,
+            "drive_id": drive_id,
+            "institution_id": institution_id,
+            "message": f"You have been marked as {target_status} for {drive.get('company_name')} ({drive.get('job_role')})!",
+            "status": "unread",
+            "created_at": now_iso
+        })
+
+    if notifications_to_insert:
+        await db.db.notifications.insert_many(notifications_to_insert)
+
+    await log_audit_event(
+        action="students_selected_for_drive",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="PlacementDrive",
+        entity_id=drive_id,
+        institution_id=institution_id,
+        details={"company": drive.get("company_name"), "selected_count": selected_count, "target_status": target_status}
+    )
+
+    return {
+        "message": f"Successfully marked {selected_count} student(s) as {target_status} for {drive.get('company_name')}.",
+        "selected_count": selected_count,
+        "status": target_status
+    }
 
 @router.post("/drives/{drive_id}/bulk-cancel-selection", dependencies=[Depends(RoleChecker(["TPO"]))])
 async def bulk_cancel_selection_applications(
