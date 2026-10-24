@@ -19,7 +19,7 @@ from app.services.board_conversion_service import (
     find_matching_conversion_rule, apply_conversion_rule, ensure_default_board_rules
 )
 from app.services.academic_timeline_service import (
-    get_student_academic_status, get_or_create_academic_batch, get_or_create_class_section,
+    get_student_academic_status, get_or_create_academic_batch,
     ensure_default_academic_calendar
 )
 from app.services.duplicate_detection_service import DuplicateDetectionService
@@ -67,6 +67,138 @@ def clean_phone(val: Any) -> str:
         digits = digits[2:]
     return digits
 
+def match_registered_class(
+    raw_class_input: Optional[str],
+    dept_id: Optional[str],
+    prog_id: Optional[str],
+    all_classes: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """
+    Finds the matching class strictly from existing classes created during institution registration.
+    Never creates a new class in the database.
+    Prioritizes classes created during registration (without batch suffix/academic_batch_id).
+    """
+    if not all_classes:
+        return None
+
+    # 1. Filter classes for this department
+    dept_classes = []
+    if dept_id:
+        dept_str = str(dept_id).strip()
+        dept_parsed = parse_id(dept_str)
+        for c in all_classes:
+            c_dept = str(c.get("department_id", "")).strip()
+            if c_dept == dept_str or (dept_parsed and parse_id(c_dept) == dept_parsed):
+                dept_classes.append(c)
+
+    # If program_id is available, check if any department classes also match program_id
+    if prog_id and dept_classes:
+        prog_str = str(prog_id).strip()
+        prog_parsed = parse_id(prog_str)
+        prog_filtered = [
+            c for c in dept_classes
+            if not c.get("program_id") or str(c.get("program_id")).strip() == prog_str or
+               (prog_parsed and parse_id(str(c.get("program_id", ""))) == prog_parsed)
+        ]
+        if prog_filtered:
+            dept_classes = prog_filtered
+
+    candidate_pool = dept_classes if dept_classes else all_classes
+
+    # 2. Prioritize classes created during registration:
+    # Classes created during registration DO NOT have academic_batch_id and DO NOT have '|' in display_name
+    reg_classes = [
+        c for c in candidate_pool
+        if not c.get("academic_batch_id") and "|" not in (c.get("display_name") or "")
+    ]
+    target_pool = reg_classes if reg_classes else candidate_pool
+
+    raw_clean = str(raw_class_input or "").strip()
+    norm_input = re.sub(r'[^a-z0-9]', '', raw_clean.lower())
+
+    def get_candidate_names(c: Dict[str, Any]) -> List[str]:
+        names = []
+        for key in ["class_name", "name", "section_name"]:
+            val = c.get(key)
+            if val and str(val).strip():
+                names.append(str(val).strip())
+        disp = c.get("display_name")
+        if disp and "|" not in str(disp) and str(disp).strip():
+            names.append(str(disp).strip())
+        return names
+
+    def extract_sec_key(s: str) -> str:
+        if not s:
+            return ""
+        clean = s.strip().lower()
+        # Look for "section X", "sec X", "class X"
+        m = re.search(r'(?:section|sec|class)[\s:\-_]*([a-z0-9]+)', clean)
+        if m:
+            return m.group(1)
+        # Look for trailing separator + token like "-A", "_A", " A", "/A", ":A"
+        m = re.search(r'[\s\-_/:\.]([a-z0-9]+)$', clean)
+        if m:
+            return m.group(1)
+        # Fallback to last alphanumeric token
+        tokens = re.findall(r'[a-z0-9]+', clean)
+        if tokens:
+            return tokens[-1]
+        return ""
+
+    sec_input = extract_sec_key(raw_clean)
+
+    if norm_input:
+        # Tier 1: Exact case-insensitive match on any candidate name
+        for c in target_pool:
+            names = get_candidate_names(c)
+            if any(n.strip().lower() == raw_clean.lower() for n in names):
+                return c
+
+        # Tier 2: Alphanumeric match (ignoring dashes, spaces, underscores)
+        for c in target_pool:
+            names = get_candidate_names(c)
+            if any(re.sub(r'[^a-z0-9]', '', n.lower()) == norm_input for n in names):
+                return c
+
+        # Tier 3: Section key match (e.g. input is 'A' or 'Section A' and candidate is 'CSE-A', or vice versa)
+        if sec_input:
+            for c in target_pool:
+                names = get_candidate_names(c)
+                for n in names:
+                    c_sec = extract_sec_key(n)
+                    if c_sec and c_sec == sec_input:
+                        return c
+
+        # Tier 4: Substring / token containment
+        for c in target_pool:
+            names = get_candidate_names(c)
+            for n in names:
+                n_norm = re.sub(r'[^a-z0-9]', '', n.lower())
+                if n_norm and (norm_input in n_norm or n_norm in norm_input):
+                    return c
+
+        # Tier 5: Search across all registered classes in the institution if not found in dept pool
+        if target_pool != all_classes:
+            all_reg = [
+                c for c in all_classes
+                if not c.get("academic_batch_id") and "|" not in (c.get("display_name") or "")
+            ]
+            all_target = all_reg if all_reg else all_classes
+            for c in all_target:
+                names = get_candidate_names(c)
+                if any(re.sub(r'[^a-z0-9]', '', n.lower()) == norm_input for n in names):
+                    return c
+                if sec_input:
+                    for n in names:
+                        if extract_sec_key(n) == sec_input:
+                            return c
+
+    # Tier 6: Fallback if candidate pool has classes
+    if target_pool:
+        return target_pool[0]
+
+    return None
+
 async def resolve_hierarchy_batch_and_faculty(
     institution_id: str,
     program_name: str,
@@ -81,7 +213,8 @@ async def resolve_hierarchy_batch_and_faculty(
     all_faculty: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
-    Resolves Program -> Duration -> Admission & Graduation Years -> Academic Batch -> Department -> Batch-specific Class -> Faculty Coordinator.
+    Resolves Program -> Duration -> Admission & Graduation Years -> Academic Batch -> Department -> Registered Class -> Faculty Coordinator.
+    Strictly maps to existing classes created during institution registration and never creates a new class.
     """
     norm_prog = program_name.lower().strip() if program_name else ""
     norm_dept = dept_name.lower().strip() if dept_name else ""
@@ -148,31 +281,37 @@ async def resolve_hierarchy_batch_and_faculty(
     if not matched_dept and all_depts:
         matched_dept = all_depts[0]
 
-
     dept_id = str(matched_dept.get("id") or matched_dept["_id"]) if matched_dept else None
     resolved_dept_name = matched_dept.get("department_name") or matched_dept.get("name", dept_name) if matched_dept else dept_name
 
-    # 5. Resolve / Create Batch-Specific Class Section
+    # 5. Resolve Existing Class Section (strictly map to existing classes created during registration)
     class_id = None
     resolved_class_name = class_name
     faculty_id = None
     faculty_name = None
 
-    if prog_id and dept_id and academic_batch_id:
-        cls_doc = await get_or_create_class_section(
-            institution_id, prog_id, dept_id, academic_batch_id, norm_cls or "Section-A"
-        )
-        class_id = cls_doc.get("id") or str(cls_doc["_id"])
-        resolved_class_name = cls_doc.get("display_name") or cls_doc.get("class_name", class_name)
+    # Safety check: if all_classes is empty in memory, attempt DB fetch
+    if not all_classes and institution_id:
+        try:
+            all_classes = await db.db.classes.find({
+                "$or": [{"institution_id": institution_id}, {"institution_id": parse_id(institution_id)}]
+            }).to_list(length=1000)
+        except Exception:
+            all_classes = []
 
-        # Resolve Faculty Coordinator mapped to this batch's class
+    matched_cls = match_registered_class(class_name, dept_id, prog_id, all_classes)
+    if matched_cls:
+        class_id = str(matched_cls.get("id") or matched_cls["_id"])
+        resolved_class_name = matched_cls.get("class_name") or matched_cls.get("name") or class_name
+
+        # Resolve Faculty Coordinator mapped to this class
         assigned_faculty = None
-        if cls_doc.get("faculty_coordinator_id"):
-            assigned_faculty = await db.db.users.find_one(id_query(cls_doc["faculty_coordinator_id"]))
+        if matched_cls.get("faculty_coordinator_id"):
+            assigned_faculty = await db.db.users.find_one(id_query(matched_cls["faculty_coordinator_id"]))
         if not assigned_faculty:
             assigned_faculty = next((f for f in all_faculty if str(f.get("class_id")) == class_id or parse_id(str(f.get("class_id"))) == parse_id(class_id)), None)
         if not assigned_faculty and dept_id:
-            assigned_faculty = next((f for f in all_faculty if str(f.get("department_id")) == dept_id), None)
+            assigned_faculty = next((f for f in all_faculty if str(f.get("department_id")) == dept_id or parse_id(str(f.get("department_id", ""))) == parse_id(dept_id)), None)
 
         faculty_id = str(assigned_faculty["_id"]) if assigned_faculty else None
         faculty_name = assigned_faculty.get("name") if assigned_faculty else None
@@ -394,7 +533,7 @@ async def process_excel_import(
 
         if not hierarchy_res["class_id"]:
             unknown_class_count += 1
-            row_issues.append(f"Could not resolve class '{class_name}'")
+            row_issues.append(f"Could not resolve class '{class_name}'. Please ensure this class was created during institute registration.")
 
         # 5. Demographics
         dob = get_val(row, "Date of Birth", "DOB")
