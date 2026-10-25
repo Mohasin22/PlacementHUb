@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import campusBg from '../assets/campus-bg.png';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
 
@@ -96,12 +97,13 @@ export const Register: React.FC<RegisterProps> = ({ onBackToLogin }) => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg-main p-4 md:p-8 animate-fade-in relative overflow-hidden">
-      {/* Decorative background elements */}
-      <div className="absolute top-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] left-[-5%] w-[30vw] h-[30vw] bg-tertiary/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div
+      className="min-h-screen flex items-center justify-center p-4 md:p-8 animate-fade-in relative bg-cover bg-center bg-no-repeat bg-fixed"
+      style={{ backgroundImage: `url(${campusBg})` }}
+    >
+      <div className="absolute inset-0 bg-stone-900/[0.02] backdrop-blur-[0.5px] pointer-events-none" />
 
-      <div className="w-full max-w-md glass-panel p-xl rounded-2xl clerk-shadow border border-outline-variant relative z-10">
+      <div className="w-full max-w-md bg-white/95 backdrop-blur-md p-8 rounded-2xl shadow-xl shadow-stone-900/5 border border-stone-200/90 relative z-10">
         
         <div className="text-center mb-xl">
           <div className="flex justify-center mb-md">
