@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import campusBg from '../assets/campus-bg.png';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
 
@@ -13,21 +14,19 @@ interface LoginProps {
   onNavigateOnboard?: () => void;
 }
 
-const PlacementHubLogo: React.FC<{ size?: 'lg' | 'sm' }> = ({ size = 'lg' }) => (
-  <div className="relative inline-flex items-center justify-center select-none py-2">
-    {/* Ambient light glow backdrop */}
-    <div className="absolute -inset-3 bg-gradient-to-r from-blue-600/25 via-indigo-500/35 to-blue-400/25 rounded-full blur-2xl animate-pulse" />
-
-    {/* Clean glowing PlacementHub text */}
-    <span
-      className={`relative font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 ${size === 'lg' ? 'text-4xl md:text-5xl lg:text-6xl' : 'text-3xl'
-        }`}
-      style={{
-        filter: 'drop-shadow(0 0 18px rgba(59, 130, 246, 0.45)) drop-shadow(0 0 35px rgba(99, 102, 241, 0.35))'
-      }}
-    >
-      Placement<span className="text-indigo-600 font-extrabold" style={{ filter: 'drop-shadow(0 0 22px rgba(99, 102, 241, 0.65))' }}>Hub</span>
-    </span>
+const PlacementHubLogo: React.FC = () => (
+  <div className="flex flex-col items-center justify-center select-none text-center">
+    <div className="inline-flex items-center gap-2.5 mb-1.5">
+      <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
+        <span className="material-symbols-outlined text-[22px]">school</span>
+      </div>
+      <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+        Placement<span className="text-indigo-600">Hub</span>
+      </span>
+    </div>
+    <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
+      Campus Recruitment & Career Portal
+    </p>
   </div>
 );
 
@@ -265,260 +264,245 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onNavigateOnboard 
   };
 
   return (
-    <main className="min-h-screen flex flex-col md:flex-row bg-background font-body-md text-on-background selection:bg-primary-container/30">
-      {/* Left Side: Clean Visual & Branding Section */}
-      <section className="hidden md:flex md:w-1/2 lg:w-[55%] relative overflow-hidden bg-surface-container-lowest items-center justify-center p-xl">
-        <div className="absolute inset-0 opacity-40">
-          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_30%_20%,#dbe1ff_0%,transparent_50%)]"></div>
-          <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(circle_at_70%_80%,#dae2fd_0%,transparent_50%)]"></div>
+    <main
+      className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 relative bg-stone-100 bg-cover bg-center bg-no-repeat selection:bg-indigo-100 selection:text-indigo-900"
+      style={{
+        backgroundImage: `url(${campusBg})`,
+      }}
+    >
+      {/* Subtle backdrop overlay to ensure crisp contrast with the sketch */}
+      <div className="absolute inset-0 bg-stone-900/[0.02] backdrop-blur-[0.5px] pointer-events-none" />
+
+      {/* Centered Sign In Container */}
+      <div className="w-full max-w-[420px] relative z-10 animate-fade-in-up">
+        {/* Heading directly on top of the sign in box */}
+        <div className="mb-6">
+          <PlacementHubLogo />
         </div>
 
-        <div className="relative z-10 w-full max-w-xl text-center space-y-xl">
-          <div className="flex justify-center items-center py-4 animate-fade-in">
-            <PlacementHubLogo size="lg" />
-          </div>
+        {/* Sign In Box */}
+        <div className="bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-2xl shadow-xl shadow-stone-900/5 p-7 sm:p-8 space-y-6">
+          <header className="space-y-1 text-center">
+            <h2 className="text-xl font-bold text-slate-800 tracking-tight">Sign in to your account</h2>
+            <p className="text-sm text-slate-500">Enter your credentials to access the portal</p>
+          </header>
 
-          <div className="space-y-md animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-            <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight font-bold">
-              Empowering the next generation of talent.
-            </h1>
-            <p className="font-body-lg text-body-lg text-on-surface-variant max-w-lg mx-auto">
-              The enterprise-grade platform for campus placements, student tracking, and corporate relations.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-md pt-lg border-t border-outline-variant/40 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-            <div className="p-md rounded-xl bg-surface-container-low/60 border border-outline-variant/40 backdrop-blur-sm text-center">
-              <span className="material-symbols-outlined text-primary text-2xl mb-1">school</span>
-              <p className="font-label-md text-on-surface font-semibold">Campus Drive</p>
-              <p className="font-body-sm text-on-surface-variant text-xs mt-0.5">Streamlined tracking</p>
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200/80 text-red-700 rounded-xl text-sm text-center font-medium">
+              {error}
             </div>
-            <div className="p-md rounded-xl bg-surface-container-low/60 border border-outline-variant/40 backdrop-blur-sm text-center">
-              <span className="material-symbols-outlined text-primary text-2xl mb-1">analytics</span>
-              <p className="font-label-md text-on-surface font-semibold">Smart Analytics</p>
-              <p className="font-body-sm text-on-surface-variant text-xs mt-0.5">Real-time reports</p>
+          )}
+          {message && (
+            <div className="p-3 bg-blue-50 border border-blue-200/80 text-blue-700 rounded-xl text-sm text-center font-medium">
+              {message}
             </div>
-            <div className="p-md rounded-xl bg-surface-container-low/60 border border-outline-variant/40 backdrop-blur-sm text-center">
-              <span className="material-symbols-outlined text-primary text-2xl mb-1">verified_user</span>
-              <p className="font-label-md text-on-surface font-semibold">Verified Portal</p>
-              <p className="font-body-sm text-on-surface-variant text-xs mt-0.5">Secure workflow</p>
-            </div>
-          </div>
-        </div>
-      </section>
+          )}
 
-      {/* Right Side: Login Section */}
-      <section className="flex-1 flex flex-col justify-center items-center p-md md:p-2xl bg-background">
-        <div className="md:hidden mb-xl flex items-center justify-center animate-fade-in">
-          <PlacementHubLogo size="sm" />
-        </div>
-
-        <div className="w-full max-w-[420px] animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-clerk clerk-shadow p-xl space-y-xl">
-            <header className="space-y-xs text-center">
-              <h2 className="font-headline-sm text-headline-sm text-on-surface font-bold">Sign in to your account</h2>
-              <p className="font-body-md text-body-md text-on-surface-variant">Enter your details to access the portal.</p>
-            </header>
-
-            {error && <div className="p-sm bg-error-container text-on-error-container rounded-lg text-sm text-center">{error}</div>}
-            {message && <div className="p-sm bg-tertiary-fixed text-on-tertiary-fixed rounded-lg text-sm text-center">{message}</div>}
-
-            {step === 'login' && (
-              <form className="space-y-lg" onSubmit={handleLogin}>
-                <div className="space-y-md">
-                  <div className="space-y-xs">
-                    <label className="font-label-md text-label-md text-on-surface" htmlFor="email">Domain Email or Personal Email</label>
-                    <div className="relative group input-halo transition-all duration-200 rounded-lg">
-                      <input
-                        className="w-full h-11 px-md rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-body-md focus:border-primary focus:ring-0 transition-colors outline-none"
-                        id="email"
-                        placeholder="name@gtu.edu or student@gmail.com"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        disabled={isLoading}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-xs">
-                    <div className="flex justify-between items-center">
-                      <label className="font-label-md text-label-md text-on-surface" htmlFor="password">Password</label>
-                    </div>
-                    <div className="relative group input-halo transition-all duration-200 rounded-lg">
-                      <input
-                        className="w-full h-11 px-md rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-body-md focus:border-primary focus:ring-0 transition-colors outline-none"
-                        id="password"
-                        placeholder="••••••••"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        disabled={isLoading}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-sm">
-                    <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="rounded border-outline-variant text-primary focus:ring-primary h-4 w-4" />
-                    <label htmlFor="rememberMe" className="text-body-sm text-on-surface-variant">Remember Me</label>
-                  </div>
-                </div>
-
-                <button
-                  className="w-full h-11 bg-primary text-on-primary rounded-lg font-label-md text-label-md font-semibold btn-hover clerk-shadow disabled:opacity-50"
-                  type="submit"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Signing in...' : 'Sign In'}
-                </button>
-
-                <div className="flex justify-center items-center mt-sm px-1">
-                  <button type="button" onClick={(e) => handleRequestOtp(e, false)} className="text-sm font-semibold text-primary hover:underline disabled:opacity-50" disabled={isLoading}>
-                    Login with OTP
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {step === 'otp' && (
-              <div className="space-y-lg">
-                <div className="space-y-xs text-center">
-                  <label className="font-label-md text-label-md text-on-surface">Enter Verification Code</label>
-                  <p className="text-body-sm text-on-surface-variant">Sent to <span className="font-semibold text-on-surface">{email}</span></p>
-                </div>
-
-                {devOtp && (
-                  <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg text-center animate-fade-in space-y-2">
-                    <p className="text-xs text-primary font-medium">Dev OTP Code: <strong className="text-sm font-mono tracking-widest bg-primary/20 px-2 py-0.5 rounded">{devOtp}</strong></p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const digits = devOtp.split('');
-                        setOtp(digits);
-                        handleVerifyOtp(devOtp);
-                      }}
-                      className="text-xs bg-primary text-on-primary px-3 py-1 rounded hover:bg-primary/90 font-medium transition-all"
-                    >
-                      Auto-fill & Verify Code
-                    </button>
-                  </div>
-                )}
-
-                <div className="flex justify-between gap-sm mt-4" onPaste={handleOtpPaste}>
-                  {otp.map((digit, i) => (
-                    <input
-                      key={i}
-                      ref={(el) => { otpRefs.current[i] = el; }}
-                      className="w-12 h-14 text-center text-xl font-bold rounded-lg border border-outline-variant focus:border-primary outline-none focus:ring-2 focus:ring-primary/20 bg-surface-container-lowest text-on-surface transition-all"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(e.target.value, i)}
-                      onKeyDown={(e) => handleKeyDown(e, i)}
-                      disabled={isLoading}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex justify-between items-center mt-6">
-                  <button
-                    type="button"
-                    className="text-label-md text-on-surface-variant hover:text-on-surface font-medium"
-                    onClick={() => { setStep('login'); setOtp(Array(6).fill('')); setError(null); setDevOtp(null); }}
-                  >
-                    ← Back to Sign In
-                  </button>
-                  <button
-                    type="button"
-                    className="text-label-md text-primary hover:underline font-semibold disabled:opacity-50"
-                    onClick={(e) => handleRequestOtp(e, false)}
+          {step === 'login' && (
+            <form className="space-y-5" onSubmit={handleLogin}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600" htmlFor="email">
+                    Email Address
+                  </label>
+                  <input
+                    className="w-full h-11 px-3.5 rounded-xl border border-stone-300 bg-white text-slate-900 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/15 transition-all outline-none placeholder:text-slate-400"
+                    id="email"
+                    placeholder="name@university.edu or student@gmail.com"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
-                  >
-                    Resend Code
-                  </button>
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600" htmlFor="password">
+                      Password
+                    </label>
+                  </div>
+                  <input
+                    className="w-full h-11 px-3.5 rounded-xl border border-stone-300 bg-white text-slate-900 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/15 transition-all outline-none placeholder:text-slate-400"
+                    id="password"
+                    placeholder="••••••••"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-0.5">
+                  <input
+                    type="checkbox"
+                    id="rememberMe"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="rounded border-stone-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                  />
+                  <label htmlFor="rememberMe" className="text-xs font-medium text-slate-600 cursor-pointer select-none">
+                    Remember me on this device
+                  </label>
                 </div>
               </div>
-            )}
 
-            {step === 'set_password' && (() => {
-              const pwLen = newPassword.length;
-              const hasNum = /[0-9]/.test(newPassword);
-              const hasSpecial = /[^A-Za-z0-9]/.test(newPassword);
-              let strength: 'weak' | 'fair' | 'strong' = 'weak';
-              if (pwLen >= 10 && hasNum && hasSpecial) strength = 'strong';
-              else if (pwLen >= 6) strength = 'fair';
-              const strengthConfig = {
-                weak: { color: '#EF4444', label: 'Weak', width: '33%' },
-                fair: { color: '#F59E0B', label: 'Fair', width: '66%' },
-                strong: { color: '#10B981', label: 'Strong', width: '100%' },
-              };
-              const sc = strengthConfig[strength];
-              return (
-                <form className="space-y-lg" onSubmit={handleSetPassword}>
-                  <div className="space-y-md">
-                    <div className="space-y-xs">
-                      <label className="font-label-md text-label-md text-on-surface">New Password</label>
-                      <div className="relative group input-halo transition-all duration-200 rounded-lg">
-                        <input
-                          className="w-full h-11 px-md rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-body-md focus:border-primary focus:ring-0 transition-colors outline-none"
-                          placeholder="Set a strong password"
-                          type="password"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          disabled={isLoading}
-                          required
-                        />
-                      </div>
-                      {newPassword.length > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ height: 6, background: 'rgba(0,0,0,0.08)', borderRadius: 99, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: sc.width, background: sc.color, borderRadius: 99, transition: 'all 0.35s ease' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                            <span style={{ fontSize: '0.75rem', color: sc.color, fontWeight: 700 }}>{sc.label}</span>
-                            <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>
-                              {strength === 'weak' ? 'Use 6+ chars' : strength === 'fair' ? 'Add special char for Strong' : '✓ Great password!'}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+              <button
+                className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold transition-all shadow-sm hover:shadow active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                type="submit"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Signing in...' : 'Sign In'}
+              </button>
+
+              <div className="flex justify-center items-center pt-1">
+                <button
+                  type="button"
+                  onClick={(e) => handleRequestOtp(e, false)}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline disabled:opacity-50 transition-colors"
+                  disabled={isLoading}
+                >
+                  Login with OTP instead
+                </button>
+              </div>
+            </form>
+          )}
+
+          {step === 'otp' && (
+            <div className="space-y-5">
+              <div className="space-y-1 text-center">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-600">Enter Verification Code</label>
+                <p className="text-xs text-slate-500">Sent to <span className="font-semibold text-slate-800">{email}</span></p>
+              </div>
+
+              {devOtp && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-center animate-fade-in space-y-2">
+                  <p className="text-xs text-indigo-700 font-medium">Dev OTP Code: <strong className="text-sm font-mono tracking-widest bg-indigo-100/80 px-2 py-0.5 rounded text-indigo-900">{devOtp}</strong></p>
                   <button
-                    className="w-full h-11 bg-primary text-on-primary font-label-md text-label-md rounded-lg flex items-center justify-center btn-hover disabled:opacity-50 disabled:cursor-not-allowed"
-                    type="submit"
-                    disabled={isLoading || newPassword.length < 6}
+                    type="button"
+                    onClick={() => {
+                      const digits = devOtp.split('');
+                      setOtp(digits);
+                      handleVerifyOtp(devOtp);
+                    }}
+                    className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg hover:bg-indigo-700 font-medium transition-all shadow-sm"
                   >
-                    {isLoading ? 'Saving...' : 'Save & Continue'}
+                    Auto-fill & Verify Code
                   </button>
-                </form>
-              );
-            })()}
+                </div>
+              )}
 
-            <footer className="pt-md border-t border-outline-variant flex flex-col items-center gap-2">
-              <p className="font-body-sm text-body-sm text-on-surface-variant text-center">
+              <div className="flex justify-between gap-2 mt-3" onPaste={handleOtpPaste}>
+                {otp.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={(el) => { otpRefs.current[i] = el; }}
+                    className="w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold rounded-xl border border-stone-300 focus:border-indigo-600 outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white text-slate-900 transition-all"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpChange(e.target.value, i)}
+                    onKeyDown={(e) => handleKeyDown(e, i)}
+                    disabled={isLoading}
+                  />
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <button
+                  type="button"
+                  className="text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors"
+                  onClick={() => { setStep('login'); setOtp(Array(6).fill('')); setError(null); setDevOtp(null); }}
+                >
+                  ← Back to Sign In
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-indigo-600 hover:underline font-semibold disabled:opacity-50"
+                  onClick={(e) => handleRequestOtp(e, false)}
+                  disabled={isLoading}
+                >
+                  Resend Code
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 'set_password' && (() => {
+            const pwLen = newPassword.length;
+            const hasNum = /[0-9]/.test(newPassword);
+            const hasSpecial = /[^A-Za-z0-9]/.test(newPassword);
+            let strength: 'weak' | 'fair' | 'strong' = 'weak';
+            if (pwLen >= 10 && hasNum && hasSpecial) strength = 'strong';
+            else if (pwLen >= 6) strength = 'fair';
+            const strengthConfig = {
+              weak: { color: '#EF4444', label: 'Weak', width: '33%' },
+              fair: { color: '#F59E0B', label: 'Fair', width: '66%' },
+              strong: { color: '#10B981', label: 'Strong', width: '100%' },
+            };
+            const sc = strengthConfig[strength];
+            return (
+              <form className="space-y-5" onSubmit={handleSetPassword}>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">New Password</label>
+                    <input
+                      className="w-full h-11 px-3.5 rounded-xl border border-stone-300 bg-white text-slate-900 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/15 transition-all outline-none placeholder:text-slate-400"
+                      placeholder="Set a strong password"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      disabled={isLoading}
+                      required
+                    />
+                    {newPassword.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{ width: sc.width, backgroundColor: sc.color }}
+                          />
+                        </div>
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span style={{ color: sc.color }} className="font-bold">{sc.label}</span>
+                          <span className="text-slate-500">
+                            {strength === 'weak' ? 'Use 6+ chars' : strength === 'fair' ? 'Add special char' : '✓ Strong password'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm rounded-xl transition-all shadow-sm hover:shadow active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                  type="submit"
+                  disabled={isLoading || newPassword.length < 6}
+                >
+                  {isLoading ? 'Saving...' : 'Save & Continue'}
+                </button>
+              </form>
+            );
+          })()}
+
+          {onNavigateOnboard && (
+            <footer className="pt-4 border-t border-stone-200/80 text-center">
+              <p className="text-xs text-slate-500">
                 New to PlacementHub?{' '}
                 <button
                   type="button"
                   onClick={onNavigateOnboard}
-                  className="text-primary font-medium hover:underline focus:outline-none"
+                  className="text-indigo-600 font-semibold hover:text-indigo-800 hover:underline focus:outline-none transition-colors"
                 >
                   Create Institution
                 </button>
               </p>
             </footer>
-          </div>
-
-          <div className="mt-xl flex flex-col items-center gap-md">
-            <div className="flex justify-center gap-lg">
-              <a className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">Privacy Policy</a>
-              <a className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">Terms of Service</a>
-              <a className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">Help Center</a>
-            </div>
-          </div>
+          )}
         </div>
-      </section>
+      </div>
     </main>
   );
 };

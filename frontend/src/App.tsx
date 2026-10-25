@@ -142,13 +142,10 @@ export default function App() {
           />
         )}
         {view === 'onboard' && (
-          <>
-            <Onboarding onSuccess={() => setView('login')} />
-            <div style={styles.switchViewLink}>
-              Already registered?{' '}
-              <button onClick={() => setView('login')} style={styles.linkButton}>Back to Login</button>
-            </div>
-          </>
+          <Onboarding
+            onSuccess={() => setView('login')}
+            onBackToLogin={() => setView('login')}
+          />
         )}
       </div>
     );
