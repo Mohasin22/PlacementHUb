@@ -3,7 +3,6 @@ import { StudentDetailModal } from './StudentDetailModal';
 import { StudentAvatar } from './StudentAvatar';
 import {
   BuildingIcon,
-  ClassIcon,
   SearchIcon,
   UploadIcon,
   RefreshIcon,
@@ -13,8 +12,6 @@ import {
   ListIcon,
   CheckCircleIcon,
   AlertCircleIcon,
-  ClockIcon,
-  AnalyticsIcon,
   IdCardIcon,
   ChevronDownIcon,
   FileSpreadsheetIcon,
@@ -55,7 +52,6 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
 
   // Navigation State
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
   // Selected Student for Modal
   const [activeStudentModal, setActiveStudentModal] = useState<any | null>(null);
@@ -73,7 +69,6 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
     const deptMap = new Map<string, {
       id: string;
       name: string;
-      classesMap: Map<string, { id: string; name: string; students: any[] }>;
       students: any[];
     }>();
 
@@ -88,28 +83,17 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
             deptMap.set(dId, {
               id: dId,
               name: dName,
-              classesMap: new Map(),
               students: [],
             });
           }
-          const dObj = deptMap.get(dId)!;
-          (dept.classes || []).forEach((c: any) => {
-            const cId = String(c.id || c.name).trim();
-            const cName = c.name || 'Section A';
-            if (!dObj.classesMap.has(cId)) {
-              dObj.classesMap.set(cId, { id: cId, name: cName, students: [] });
-            }
-          });
         });
       });
     }
 
-    // Next, assign all students to departments and classes
+    // Next, assign all students to departments
     localStudents.forEach((st: any) => {
       const dName = st.department_name || st.academic_identity?.department_name || 'General Department';
       const dId = String(st.department_id || st.academic_identity?.department_id || dName).trim();
-      const cName = st.class_name || st.academic_identity?.class_name || 'Section A';
-      const cId = String(st.class_id || st.academic_identity?.class_id || cName).trim();
 
       // Find or create dept
       let dObj = deptMap.get(dId);
@@ -125,69 +109,21 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
         dObj = {
           id: dId,
           name: dName,
-          classesMap: new Map(),
           students: [],
         };
         deptMap.set(dId, dObj);
       }
 
       dObj.students.push(st);
-
-      // Find or create class
-      let cObj = dObj.classesMap.get(cId);
-      if (!cObj) {
-        for (const cVal of dObj.classesMap.values()) {
-          if (cVal.name.toLowerCase() === cName.toLowerCase()) {
-            cObj = cVal;
-            break;
-          }
-        }
-      }
-      if (!cObj) {
-        cObj = { id: cId, name: cName, students: [] };
-        dObj.classesMap.set(cId, cObj);
-      }
-
-      cObj.students.push(st);
     });
 
     // Format list of departments
     let totalStudentsCount = 0;
-    let totalClassesCount = 0;
     let totalResumesCount = 0;
     let totalCgpaSum = 0;
     let totalCgpaValidStudents = 0;
 
     const list = Array.from(deptMap.values()).map((d, index) => {
-      const classesList = Array.from(d.classesMap.values()).map((c) => {
-        const cStudents = c.students;
-        const validCgpas = cStudents.filter((s) => Number(s.cgpa) > 0);
-        const cAvgCgpa = validCgpas.length > 0
-          ? validCgpas.reduce((acc, s) => acc + Number(s.cgpa), 0) / validCgpas.length
-          : 0;
-        const cResumes = cStudents.filter((s) => Boolean(s.resume_url || s.documents?.resume)).length;
-        const cBacklogs = cStudents.filter((s) => (s.active_backlogs || 0) > 0).length;
-
-        const firstSt = cStudents[0];
-        const batch = firstSt?.batch_label || '2023–2027';
-        const studyYear = firstSt?.study_year_label || `${firstSt?.current_study_year || 4}th Year`;
-        const semester = firstSt?.semester_label || `${firstSt?.current_semester || 7}th Sem`;
-
-        return {
-          id: c.id,
-          name: c.name,
-          students: cStudents,
-          studentCount: cStudents.length,
-          avgCgpa: cAvgCgpa,
-          resumesUploaded: cResumes,
-          missingResumes: cStudents.length - cResumes,
-          activeBacklogsCount: cBacklogs,
-          batchLabel: batch,
-          studyYearLabel: studyYear,
-          semesterLabel: semester,
-        };
-      });
-
       const dStudents = d.students;
       const dValidCgpas = dStudents.filter((s) => Number(s.cgpa) > 0);
       const dAvgCgpa = dValidCgpas.length > 0
@@ -196,8 +132,12 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
       const dResumes = dStudents.filter((s) => Boolean(s.resume_url || s.documents?.resume)).length;
       const dBacklogs = dStudents.filter((s) => (s.active_backlogs || 0) > 0).length;
 
+      const firstSt = dStudents[0];
+      const batch = firstSt?.batch_label || '2023–2027';
+      const studyYear = firstSt?.study_year_label || `${firstSt?.current_study_year || 4}th Year`;
+      const semester = firstSt?.semester_label || `${firstSt?.current_semester || 7}th Sem`;
+
       totalStudentsCount += dStudents.length;
-      totalClassesCount += classesList.length;
       totalResumesCount += dResumes;
       dValidCgpas.forEach((s) => {
         totalCgpaSum += Number(s.cgpa);
@@ -209,13 +149,15 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
       return {
         id: d.id,
         name: d.name,
-        classes: classesList,
         students: dStudents,
         studentCount: dStudents.length,
         avgCgpa: dAvgCgpa,
         resumesUploaded: dResumes,
         missingResumes: dStudents.length - dResumes,
         activeBacklogsCount: dBacklogs,
+        batchLabel: batch,
+        studyYearLabel: studyYear,
+        semesterLabel: semester,
         colorScheme,
       };
     });
@@ -228,30 +170,24 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
       departmentList: list,
       totalStats: {
         totalDepartments: list.length,
-        totalClasses: totalClassesCount,
         totalStudents: totalStudentsCount,
         totalResumes: totalResumesCount,
         missingResumes: totalStudentsCount - totalResumesCount,
         overallAvgCgpa,
       },
     };
-  }, [students, hierarchy]);
+  }, [localStudents, hierarchy]);
 
-  // Current selected department and class objects
+  // Current selected department object
   const selectedDepartment = useMemo(() => {
     if (!selectedDeptId) return null;
     return departmentList.find((d) => d.id === selectedDeptId) || null;
   }, [selectedDeptId, departmentList]);
 
-  const selectedClass = useMemo(() => {
-    if (!selectedDepartment || !selectedClassId) return null;
-    return selectedDepartment.classes.find((c) => c.id === selectedClassId) || null;
-  }, [selectedDepartment, selectedClassId]);
-
-  // Filtered students for Level 3
-  const classStudentsFiltered = useMemo(() => {
-    if (!selectedClass) return [];
-    return selectedClass.students.filter((st: any) => {
+  // Filtered students for selected department
+  const deptStudentsFiltered = useMemo(() => {
+    if (!selectedDepartment) return [];
+    return selectedDepartment.students.filter((st: any) => {
       // Search text
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -282,14 +218,11 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
 
       return true;
     });
-  }, [selectedClass, searchQuery, cgpaFilter, resumeFilter, backlogFilter]);
+  }, [selectedDepartment, searchQuery, cgpaFilter, resumeFilter, backlogFilter]);
 
   // Handler to navigate back
   const handleGoBack = () => {
-    if (selectedClassId) {
-      setSelectedClassId(null);
-      setSearchQuery('');
-    } else if (selectedDeptId) {
+    if (selectedDeptId) {
       setSelectedDeptId(null);
       setSearchQuery('');
     }
@@ -318,7 +251,6 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
             <button
               onClick={() => {
                 setSelectedDeptId(null);
-                setSelectedClassId(null);
                 setSearchQuery('');
               }}
               style={{
@@ -343,34 +275,6 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
             {selectedDepartment && (
               <>
                 <ChevronRightIcon size={14} color="var(--text-secondary)" />
-                <button
-                  onClick={() => {
-                    setSelectedClassId(null);
-                    setSearchQuery('');
-                  }}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    background: selectedDeptId && !selectedClassId ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
-                    border: 'none',
-                    color: selectedDeptId && !selectedClassId ? '#2563EB' : 'var(--text-secondary)',
-                    fontWeight: selectedDeptId && !selectedClassId ? 700 : 500,
-                    fontSize: '0.9rem',
-                    cursor: 'pointer',
-                    padding: '4px 10px',
-                    borderRadius: 8,
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  <span>{selectedDepartment.name}</span>
-                </button>
-              </>
-            )}
-
-            {selectedClass && (
-              <>
-                <ChevronRightIcon size={14} color="var(--text-secondary)" />
                 <span
                   style={{
                     display: 'inline-flex',
@@ -384,8 +288,8 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                     borderRadius: 8,
                   }}
                 >
-                  <ClassIcon size={16} color="#2563EB" />
-                  <span>Class {selectedClass.name}</span>
+                  <BuildingIcon size={16} color="#2563EB" />
+                  <span>{selectedDepartment.name}</span>
                 </span>
               </>
             )}
@@ -393,20 +297,17 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
 
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: 4 }}>
             {!selectedDepartment && (
-              <span>Select a department to view enrolled classes & student cohorts.</span>
+              <span>Select a department to view enrolled student cohorts.</span>
             )}
-            {selectedDepartment && !selectedClass && (
-              <span>Showing classes under <strong>{selectedDepartment.name}</strong>. Select a class to view student profiles.</span>
-            )}
-            {selectedClass && (
-              <span>Viewing students enrolled in <strong>{selectedDepartment?.name} • Class {selectedClass.name}</strong></span>
+            {selectedDepartment && (
+              <span>Viewing students enrolled in <strong>{selectedDepartment.name}</strong></span>
             )}
           </div>
         </div>
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {(selectedDeptId || selectedClassId) && (
+          {selectedDeptId && (
             <button
               onClick={handleGoBack}
               style={{
@@ -561,13 +462,13 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
               }}
             >
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                Total Classes & Sections
+                Active Branches
               </div>
               <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0284C7', marginTop: 4 }}>
-                {totalStats.totalClasses}
+                {totalStats.totalDepartments}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>
-                Across all departments
+                Department Cohorts
               </div>
             </div>
 
@@ -659,7 +560,6 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                   key={dept.id}
                   onClick={() => {
                     setSelectedDeptId(dept.id);
-                    setSelectedClassId(null);
                     setSearchQuery('');
                   }}
                   style={{
@@ -743,15 +643,6 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                     >
                       <div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          Classes
-                        </div>
-                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 2 }}>
-                          {dept.classes.length}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                           Students
                         </div>
                         <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#4F46E5', marginTop: 2 }}>
@@ -774,40 +665,21 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                           {dept.avgCgpa > 0 ? dept.avgCgpa.toFixed(2) : '—'}
                         </div>
                       </div>
-                    </div>
 
-                    {/* Classes Preview Tags */}
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 6 }}>
-                        Enrolled Classes & Sections:
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {dept.classes.slice(0, 4).map((c) => (
-                          <span
-                            key={c.id}
-                            style={{
-                              background: dept.colorScheme.soft,
-                              color: dept.colorScheme.text,
-                              border: `1px solid ${dept.colorScheme.border}`,
-                              padding: '3px 8px',
-                              borderRadius: 6,
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                            }}
-                          >
-                            Class {c.name} ({c.studentCount})
-                          </span>
-                        ))}
-                        {dept.classes.length > 4 && (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', padding: '3px 4px' }}>
-                            +{dept.classes.length - 4} more
-                          </span>
-                        )}
-                        {dept.classes.length === 0 && (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                            No active classes
-                          </span>
-                        )}
+                      <div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          Backlogs
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '1.15rem',
+                            fontWeight: 800,
+                            color: dept.activeBacklogsCount === 0 ? '#16A34A' : '#DC2626',
+                            marginTop: 2,
+                          }}
+                        >
+                          {dept.activeBacklogsCount}
+                        </div>
                       </div>
                     </div>
 
@@ -849,7 +721,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                           fontSize: '0.85rem',
                         }}
                       >
-                        <span>Explore {dept.classes.length} Classes</span>
+                        <span>View {dept.studentCount} Students</span>
                         <ChevronRightIcon size={14} color="currentColor" />
                       </span>
                     </div>
@@ -861,241 +733,10 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
         </div>
       )}
 
-      {/* ── LEVEL 2: CLASS CARDS (UNDER SELECTED DEPARTMENT) ───────────────── */}
-      {selectedDepartment && !selectedClassId && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Department Banner Card */}
-          <div
-            style={{
-              background: selectedDepartment.colorScheme.bg,
-              padding: '24px 28px',
-              borderRadius: 16,
-              color: '#FFFFFF',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 16,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-            }}
-          >
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800 }}>
-                  {selectedDepartment.name}
-                </h2>
-                <span
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.2)',
-                    padding: '3px 10px',
-                    borderRadius: 8,
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                  }}
-                >
-                  {selectedDepartment.classes.length} Classes
-                </span>
-              </div>
-              <p style={{ margin: '4px 0 0 0', opacity: 0.9, fontSize: '0.88rem' }}>
-                Total {selectedDepartment.studentCount} enrolled students across all sections
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Department Avg CGPA</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>
-                  {selectedDepartment.avgCgpa > 0 ? selectedDepartment.avgCgpa.toFixed(2) : '—'}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Resumes Ready</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>
-                  {selectedDepartment.resumesUploaded} / {selectedDepartment.studentCount}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Classes Cards Grid */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: 18,
-            }}
-          >
-            {selectedDepartment.classes.map((cls) => {
-              const resRate = cls.studentCount > 0 ? Math.round((cls.resumesUploaded / cls.studentCount) * 100) : 0;
-
-              return (
-                <div
-                  key={cls.id}
-                  onClick={() => {
-                    setSelectedClassId(cls.id);
-                    setSearchQuery('');
-                  }}
-                  style={{
-                    background: 'var(--card-bg, #FFFFFF)',
-                    border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                    borderRadius: 16,
-                    padding: 20,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                    transition: 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: 14,
-                    height: '100%',
-                    boxSizing: 'border-box',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(0,0,0,0.08)';
-                    e.currentTarget.style.borderColor = '#3B82F6';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
-                    e.currentTarget.style.borderColor = 'var(--border-color, rgba(0,0,0,0.08))';
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 10,
-                          background: 'rgba(59, 130, 246, 0.1)',
-                          color: '#2563EB',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <ClassIcon size={20} color="#2563EB" />
-                      </div>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                          Class {cls.name}
-                        </h3>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                          {cls.batchLabel}
-                        </span>
-                      </div>
-                    </div>
-
-                    <span
-                      style={{
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        color: '#2563EB',
-                        padding: '3px 8px',
-                        borderRadius: 8,
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {cls.studentCount} Students
-                    </span>
-                  </div>
-
-                  {/* Class Timeline Chips */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'var(--bg-main, #F8FAFC)',
-                        border: '1px solid var(--border-color)',
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        fontSize: '0.72rem',
-                        color: 'var(--text-secondary)',
-                      }}
-                    >
-                      <ClockIcon size={12} color="var(--text-secondary)" />
-                      <span>{cls.studyYearLabel} • {cls.semesterLabel}</span>
-                    </span>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'var(--bg-main, #F8FAFC)',
-                        border: '1px solid var(--border-color)',
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        fontSize: '0.72rem',
-                        color: 'var(--text-secondary)',
-                      }}
-                    >
-                      <AnalyticsIcon size={12} color="var(--text-secondary)" />
-                      <span>Avg CGPA: <strong style={{ color: 'var(--text-primary)' }}>{cls.avgCgpa > 0 ? cls.avgCgpa.toFixed(2) : '—'}</strong></span>
-                    </span>
-                  </div>
-
-                  {/* Resumes Progress */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', marginBottom: 4 }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Resume Status</span>
-                      <strong style={{ color: resRate >= 80 ? '#16A34A' : '#D97706' }}>
-                        {resRate}% ({cls.resumesUploaded}/{cls.studentCount})
-                      </strong>
-                    </div>
-                    <div
-                      style={{
-                        height: 5,
-                        background: 'rgba(0,0,0,0.06)',
-                        borderRadius: 3,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: '100%',
-                          width: `${resRate}%`,
-                          background: resRate >= 80 ? '#16A34A' : '#F59E0B',
-                          borderRadius: 3,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 'auto', paddingTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#2563EB', fontWeight: 700, fontSize: '0.85rem' }}>
-                      <span>View {cls.studentCount} Students</span>
-                      <ChevronRightIcon size={14} color="#2563EB" />
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-
-            {selectedDepartment.classes.length === 0 && (
-              <div
-                style={{
-                  gridColumn: '1 / -1',
-                  textAlign: 'center',
-                  padding: 40,
-                  background: 'var(--card-bg)',
-                  borderRadius: 16,
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                No classes registered under this department yet.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── LEVEL 3: STUDENTS IN SELECTED CLASS ────────────────────────────── */}
-      {selectedDepartment && selectedClass && (
+      {/* ── LEVEL 2: STUDENTS IN SELECTED DEPARTMENT ──────────────────────── */}
+      {selectedDepartment && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* Class Header Banner */}
+          {/* Department Header Banner */}
           <div
             style={{
               background: 'var(--card-bg, #FFFFFF)',
@@ -1112,7 +753,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  {selectedDepartment.name} • Class {selectedClass.name}
+                  {selectedDepartment.name}
                 </h2>
                 <span
                   style={{
@@ -1124,32 +765,32 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                     fontWeight: 700,
                   }}
                 >
-                  {selectedClass.studentCount} Students
+                  {selectedDepartment.studentCount} Students
                 </span>
               </div>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {selectedClass.batchLabel} &bull; {selectedClass.studyYearLabel} &bull; {selectedClass.semesterLabel}
+                {selectedDepartment.batchLabel} &bull; {selectedDepartment.studyYearLabel} &bull; {selectedDepartment.semesterLabel}
               </p>
             </div>
 
-            {/* Quick Metrics in Class */}
+            {/* Quick Metrics in Department */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ background: 'var(--bg-main)', padding: '6px 14px', borderRadius: 8, textAlign: 'center' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Class Avg CGPA</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Department Avg CGPA</div>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#2563EB', marginTop: 2 }}>
-                  {selectedClass.avgCgpa > 0 ? selectedClass.avgCgpa.toFixed(2) : '—'}
+                  {selectedDepartment.avgCgpa > 0 ? selectedDepartment.avgCgpa.toFixed(2) : '—'}
                 </div>
               </div>
               <div style={{ background: 'var(--bg-main)', padding: '6px 14px', borderRadius: 8, textAlign: 'center' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Resumes</div>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#16A34A', marginTop: 2 }}>
-                  {selectedClass.resumesUploaded} / {selectedClass.studentCount}
+                  {selectedDepartment.resumesUploaded} / {selectedDepartment.studentCount}
                 </div>
               </div>
               <div style={{ background: 'var(--bg-main)', padding: '6px 14px', borderRadius: 8, textAlign: 'center' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Active Backlogs</div>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: selectedClass.activeBacklogsCount === 0 ? '#16A34A' : '#DC2626', marginTop: 2 }}>
-                  {selectedClass.activeBacklogsCount}
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: selectedDepartment.activeBacklogsCount === 0 ? '#16A34A' : '#DC2626', marginTop: 2 }}>
+                  {selectedDepartment.activeBacklogsCount}
                 </div>
               </div>
             </div>
@@ -1319,7 +960,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
           </div>
 
           {/* Students Display (Cards or Table) */}
-          {classStudentsFiltered.length === 0 ? (
+          {deptStudentsFiltered.length === 0 ? (
             <div
               style={{
                 textAlign: 'center',
@@ -1376,7 +1017,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                 gap: 18,
               }}
             >
-              {classStudentsFiltered.map((st) => {
+              {deptStudentsFiltered.map((st) => {
                 const sName = st.name || st.identity?.full_name || 'Student';
                 const sRoll = st.roll_number || st.student_id || 'N/A';
                 const sCgpa = Number(st.cgpa || 0).toFixed(2);
@@ -1591,7 +1232,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                   </tr>
                 </thead>
                 <tbody>
-                  {classStudentsFiltered.map((st) => {
+                  {deptStudentsFiltered.map((st) => {
                     const sName = st.name || st.identity?.full_name || 'Student';
                     const sRoll = st.roll_number || st.student_id || 'N/A';
                     const sCgpa = Number(st.cgpa || 0).toFixed(2);

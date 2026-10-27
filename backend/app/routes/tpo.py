@@ -270,7 +270,7 @@ async def get_tpo_students(
             "department_id": str(st.get("department_id") or st.get("academic_identity", {}).get("department_id") or ""),
             "department_name": st.get("department_name") or st.get("academic_identity", {}).get("department_name") or "General",
             "class_id": str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or ""),
-            "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "Section A",
+            "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "",
             "academic_batch_id": st.get("academic_batch_id") or st.get("academic_identity", {}).get("academic_batch_id") or "",
             "batch_label": derived["batch_label"],
             "current_study_year": derived["current_study_year"],
@@ -332,7 +332,7 @@ async def get_tpo_student_detail(
         "department_id": str(st.get("department_id") or st.get("academic_identity", {}).get("department_id") or ""),
         "department_name": st.get("department_name") or st.get("academic_identity", {}).get("department_name") or "General",
         "class_id": str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or ""),
-        "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "Section A",
+        "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "",
         "academic_batch_id": st.get("academic_batch_id") or st.get("academic_identity", {}).get("academic_batch_id") or "",
         "batch_label": derived["batch_label"],
         "current_study_year": derived["current_study_year"],
@@ -629,8 +629,8 @@ async def get_drive_candidate_pool(
         roll = st.get("roll_number") or st.get("student_id") or ""
         dept_name = st.get("department_name") or st.get("academic_identity", {}).get("department_name") or "General"
         dept_id = str(st.get("department_id") or st.get("academic_identity", {}).get("department_id") or dept_name)
-        class_name = st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "Section A"
-        class_id = str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or class_name)
+        class_name = st.get("class_name") or st.get("academic_identity", {}).get("class_name") or ""
+        class_id = str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or "")
 
         cgpa = float(st.get("cgpa") or st.get("education", {}).get("undergraduate", {}).get("normalized_cgpa") or 0.0)
         active_backlogs = int(st.get("active_backlogs") if st.get("active_backlogs") is not None else st.get("eligibility_data", {}).get("current_backlogs", 0))

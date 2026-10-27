@@ -284,39 +284,32 @@ async def resolve_hierarchy_batch_and_faculty(
     dept_id = str(matched_dept.get("id") or matched_dept["_id"]) if matched_dept else None
     resolved_dept_name = matched_dept.get("department_name") or matched_dept.get("name", dept_name) if matched_dept else dept_name
 
-    # 5. Resolve Existing Class Section (strictly map to existing classes created during registration)
+    # 5. Resolve Faculty Coordinator (mapped to this department/branch)
     class_id = None
     resolved_class_name = class_name
     faculty_id = None
     faculty_name = None
 
-    # Safety check: if all_classes is empty in memory, attempt DB fetch
-    if not all_classes and institution_id:
-        try:
-            all_classes = await db.db.classes.find({
-                "$or": [{"institution_id": institution_id}, {"institution_id": parse_id(institution_id)}]
-            }).to_list(length=1000)
-        except Exception:
-            all_classes = []
+    assigned_faculty = None
+    if dept_id:
+        assigned_faculty = next((f for f in all_faculty if str(f.get("department_id")) == dept_id or parse_id(str(f.get("department_id", ""))) == parse_id(dept_id)), None)
 
-    matched_cls = match_registered_class(class_name, dept_id, prog_id, all_classes)
-    if matched_cls:
-        class_id = str(matched_cls.get("id") or matched_cls["_id"])
-        resolved_class_name = matched_cls.get("class_name") or matched_cls.get("name") or class_name
+    # Optional legacy class fallback if existing class exists
+    if not assigned_faculty and all_classes:
+        matched_cls = match_registered_class(class_name, dept_id, prog_id, all_classes)
+        if matched_cls:
+            class_id = str(matched_cls.get("id") or matched_cls["_id"])
+            resolved_class_name = matched_cls.get("class_name") or matched_cls.get("name") or class_name
+            if matched_cls.get("faculty_coordinator_id"):
+                assigned_faculty = await db.db.users.find_one(id_query(matched_cls["faculty_coordinator_id"]))
+            if not assigned_faculty:
+                assigned_faculty = next((f for f in all_faculty if str(f.get("class_id")) == class_id or parse_id(str(f.get("class_id"))) == parse_id(class_id)), None)
 
-        # Resolve Faculty Coordinator mapped to this class
-        assigned_faculty = None
-        if matched_cls.get("faculty_coordinator_id"):
-            assigned_faculty = await db.db.users.find_one(id_query(matched_cls["faculty_coordinator_id"]))
-        if not assigned_faculty:
-            assigned_faculty = next((f for f in all_faculty if str(f.get("class_id")) == class_id or parse_id(str(f.get("class_id"))) == parse_id(class_id)), None)
-        if not assigned_faculty and dept_id:
-            assigned_faculty = next((f for f in all_faculty if str(f.get("department_id")) == dept_id or parse_id(str(f.get("department_id", ""))) == parse_id(dept_id)), None)
+    if assigned_faculty:
+        faculty_id = str(assigned_faculty["_id"])
+        faculty_name = assigned_faculty.get("name")
 
-        faculty_id = str(assigned_faculty["_id"]) if assigned_faculty else None
-        faculty_name = assigned_faculty.get("name") if assigned_faculty else None
-
-    is_mapped = bool(prog_id and dept_id and academic_batch_id and class_id and faculty_id and not batch_duration_mismatch)
+    is_mapped = bool(prog_id and dept_id and academic_batch_id and not batch_duration_mismatch)
 
     return {
         "program_id": prog_id,
@@ -531,9 +524,7 @@ async def process_excel_import(
             unknown_dept_count += 1
             row_issues.append(f"Could not resolve department '{dept_name}'")
 
-        if not hierarchy_res["class_id"]:
-            unknown_class_count += 1
-            row_issues.append(f"Could not resolve class '{class_name}'. Please ensure this class was created during institute registration.")
+        # Classes / sections are no longer required - students are mapped directly to branch/department
 
         # 5. Demographics
         dob = get_val(row, "Date of Birth", "DOB")

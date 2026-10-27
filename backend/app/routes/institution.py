@@ -70,7 +70,7 @@ async def onboard_institution(payload: InstitutionOnboardRequest):
             dept_result = await db.db.departments.insert_one(dept_doc)
             dept_id = str(dept_result.inserted_id)
             
-            for class_name in dept.classes:
+            for class_name in (dept.classes or []):
                 class_doc = {
                     "class_name": class_name.strip(),
                     "department_id": dept_id,

@@ -9,7 +9,6 @@ import {
   RefreshIcon,
   GraduationCapIcon,
   BuildingIcon,
-  ClassIcon,
   AlertIcon
 } from './Icons';
 
@@ -64,10 +63,9 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
   const [driveDetails, setDriveDetails] = useState<any>(drive || {});
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // ── Branch, Year, Section Selectors ──
+  // ── Branch & Year Selectors ──
   const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<string>('ALL');
-  const [selectedSection, setSelectedSection] = useState<string>('ALL');
 
   // ── Eligibility Criteria Filter Controls (Pre-filled from Drive) ──
   const [filterOnlyEligible, setFilterOnlyEligible] = useState<boolean>(true);
@@ -170,16 +168,6 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
     return Array.from(years).sort();
   }, [candidates]);
 
-  // ── Unique Sections derived for selected branch ──
-  const sectionOptions = useMemo(() => {
-    const sections = new Set<string>();
-    candidates.forEach(c => {
-      if (selectedBranch === 'ALL' || c.department_name === selectedBranch) {
-        if (c.class_name) sections.add(c.class_name.trim());
-      }
-    });
-    return Array.from(sections).sort();
-  }, [candidates, selectedBranch]);
 
   // ── Compute Eligibility dynamically based on current filter values ──
   const evaluateStudentCustom = useCallback((s: CandidateStudent) => {
@@ -257,10 +245,6 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
         }
       }
 
-      // 3. Section filter
-      if (selectedSection !== 'ALL' && student.class_name !== selectedSection) {
-        return false;
-      }
 
       // 4. Search query (Name or Roll Number)
       if (searchQuery.trim()) {
@@ -278,7 +262,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
 
       return true;
     });
-  }, [candidates, selectedBranch, selectedYear, selectedSection, searchQuery, filterOnlyEligible, evaluateStudentCustom]);
+  }, [candidates, selectedBranch, selectedYear, searchQuery, filterOnlyEligible, evaluateStudentCustom]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -368,7 +352,6 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
       'Mobile',
       'Branch',
       'Year',
-      'Section',
       'CGPA',
       'Active Backlogs',
       '10th %',
@@ -388,7 +371,6 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
         `"${c.mobile}"`,
         `"${c.department_name}"`,
         `"${c.study_year_label || `${c.current_study_year} Year`}"`,
-        `"${c.class_name}"`,
         `"${c.cgpa}"`,
         `"${c.active_backlogs}"`,
         `"${c.tenth_percentage ?? ''}"`,
@@ -405,7 +387,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
     const companyName = (driveDetails?.company_name || 'Placement_Drive').replace(/\s+/g, '_');
-    link.setAttribute('download', `${companyName}_Student_Candidates_${selectedBranch}_${selectedSection}.csv`);
+    link.setAttribute('download', `${companyName}_Student_Candidates_${selectedBranch}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -641,7 +623,6 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
               value={selectedBranch}
               onChange={(e) => {
                 setSelectedBranch(e.target.value);
-                setSelectedSection('ALL'); // Reset section on branch change
               }}
               style={{
                 background: 'var(--bg-main)',
@@ -698,34 +679,6 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
             </select>
           </div>
 
-          {/* Section Selector */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <ClassIcon size={13} color="#8B5CF6" /> 3. CHOOSE SECTION
-            </label>
-            <select
-              value={selectedSection}
-              onChange={(e) => setSelectedSection(e.target.value)}
-              style={{
-                background: 'var(--bg-main)',
-                border: '1.5px solid #8B5CF6',
-                borderRadius: 8,
-                padding: '8px 12px',
-                color: 'var(--text-primary)',
-                fontWeight: 600,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                outline: 'none',
-              }}
-            >
-              <option value="ALL">📚 All Sections</option>
-              {sectionOptions.map(sec => (
-                <option key={sec} value={sec}>
-                  Section: {sec}
-                </option>
-              ))}
-            </select>
-          </div>
 
           {/* Search box */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 200 }}>
@@ -1160,7 +1113,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                   <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Roll No</th>
                   <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Student Name</th>
                   <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Branch / Dept</th>
-                  <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Year & Section</th>
+                  <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Year / Batch</th>
                   <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>CGPA</th>
                   <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Backlogs</th>
                   <th style={{ padding: '10px 12px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>10th / 12th %</th>
@@ -1262,13 +1215,13 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                         </span>
                       </td>
 
-                      {/* Year & Section */}
+                      {/* Year / Batch */}
                       <td style={{ padding: '10px 12px', borderRight: '1px solid var(--border-color)' }}>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                           {student.study_year_label || `${student.current_study_year} Year`}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#8B5CF6', fontWeight: 600 }}>
-                          Sec: {student.class_name}
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          Batch: {student.passout_year || 'N/A'}
                         </div>
                       </td>
 

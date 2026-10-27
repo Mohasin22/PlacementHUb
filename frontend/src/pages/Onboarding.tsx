@@ -5,7 +5,7 @@ const API_BASE = 'http://127.0.0.1:8000/api';
 
 interface Department {
   name: string;
-  classes: string[];
+  classes?: string[];
 }
 
 interface Program {
@@ -35,14 +35,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
     {
       name: 'B.Tech',
       departments: [
-        { name: 'CSE', classes: ['CSE-A', 'CSE-B'] },
-        { name: 'ECE', classes: ['ECE-A'] },
+        { name: 'Computer Science & Engineering', classes: [] },
+        { name: 'Electronics & Communication', classes: [] },
       ],
     },
     {
       name: 'MBA',
       departments: [
-        { name: 'Finance', classes: ['MBA-Fin'] },
+        { name: 'Finance', classes: [] },
       ],
     },
   ]);
@@ -52,7 +52,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
   const [activeProgIdx, setActiveProgIdx] = useState<number>(0);
   const [newDeptName, setNewDeptName] = useState('');
   const [activeDeptIdx, setActiveDeptIdx] = useState<number>(0);
-  const [newClassName, setNewClassName] = useState('');
 
   // Step 3: Dean (Super Admin)
   const [deanName, setDeanName] = useState('');
@@ -62,7 +61,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
 
   // Derived helper references
   const currentProgram = programs[activeProgIdx];
-  const currentDepartment = currentProgram?.departments[activeDeptIdx];
 
   // Hierarchy Helpers
   const addProgram = () => {
@@ -85,17 +83,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
     setActiveDeptIdx(updated[activeProgIdx].departments.length - 1);
   };
 
-  const addClass = () => {
-    const name = newClassName.trim();
-    if (!name || activeProgIdx < 0 || activeProgIdx >= programs.length) return;
-    const dept = programs[activeProgIdx]?.departments[activeDeptIdx];
-    if (!dept) return;
-    const updated = [...programs];
-    updated[activeProgIdx].departments[activeDeptIdx].classes.push(name);
-    setPrograms(updated);
-    setNewClassName('');
-  };
-
   const removeProgram = (pIdx: number) => {
     const updated = programs.filter((_, idx) => idx !== pIdx);
     setPrograms(updated);
@@ -114,14 +101,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
     }
   };
 
-  const removeClass = (pIdx: number, dIdx: number, cIdx: number) => {
-    const updated = [...programs];
-    updated[pIdx].departments[dIdx].classes = updated[pIdx].departments[dIdx].classes.filter(
-      (_, idx) => idx !== cIdx
-    );
-    setPrograms(updated);
-  };
-
   const handleOnboard = async () => {
     setIsLoading(true);
     setError(null);
@@ -136,7 +115,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
         name: p.name,
         departments: p.departments.map(d => ({
           name: d.name,
-          classes: d.classes
+          classes: []
         }))
       })),
       dean: {
@@ -253,7 +232,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             {step === 1 && 'Enter the core information and branding for your campus placement portal.'}
-            {step === 2 && 'Define degrees, academic departments, and class sections.'}
+            {step === 2 && 'Define degrees and academic departments / branches.'}
             {step === 3 && 'Configure the primary institution administrator credentials.'}
             {step === 4 && 'Verify all details before initializing the platform.'}
           </p>
@@ -346,7 +325,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
         {step === 2 && (
           <div style={styles.form}>
             <p style={{ fontSize: '0.88rem', color: '#4B5563', margin: '0 0 12px 0' }}>
-              Build your institution's hierarchy: Add <strong>Programs</strong> (e.g. B.Tech), <strong>Departments</strong> (e.g. CSE), and <strong>Classes</strong> (e.g. CSE-A). Click a program or department to configure its items.
+              Build your institution's hierarchy: Add <strong>Programs</strong> (e.g. B.Tech) and <strong>Departments / Branches</strong> (e.g. CSE). Students will be mapped directly to their respective branch.
             </p>
 
             <div style={styles.builderLayout}>
@@ -468,9 +447,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📁 {dept.name}</span>
-                            <span style={{ fontSize: '0.72rem', background: isActive ? '#DBEAFE' : '#F3F4F6', color: isActive ? '#1E40AF' : '#6B7280', padding: '2px 6px', borderRadius: '10px', flexShrink: 0 }}>
-                              {dept.classes.length} classes
-                            </span>
                           </span>
                           <button 
                             type="button" 
@@ -483,60 +459,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
                         </div>
                       );
                     })
-                  )}
-                </div>
-              </div>
-
-              {/* Classes Column */}
-              <div style={styles.builderCol}>
-                <label style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1F2937', marginBottom: '8px', display: 'block' }}>
-                  3. Classes {currentDepartment ? `(${currentDepartment.classes.length})` : ''}
-                </label>
-                <div style={styles.addItemRow}>
-                  <input 
-                    type="text" 
-                    placeholder={currentDepartment ? `Add to ${currentDepartment.name}...` : "Select a Dept"} 
-                    value={newClassName} 
-                    onChange={e => setNewClassName(e.target.value)} 
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addClass(); } }}
-                    disabled={!currentDepartment}
-                    style={{ flex: 1, minWidth: 0, width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', outline: 'none', fontSize: '0.82rem', boxSizing: 'border-box' }}
-                  />
-                  <button 
-                    type="button" 
-                    className="btn-primary" 
-                    onClick={addClass} 
-                    disabled={!currentDepartment || !newClassName.trim()}
-                    style={{ padding: '8px 12px', borderRadius: '6px', flexShrink: 0, fontSize: '0.82rem', whiteSpace: 'nowrap' }}
-                  >
-                    + Add
-                  </button>
-                </div>
-                <div style={styles.builderList}>
-                  {!currentDepartment ? (
-                    <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
-                      Select a department to manage classes.
-                    </div>
-                  ) : currentDepartment.classes.length === 0 ? (
-                    <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
-                      No classes in <strong>{currentDepartment.name}</strong>. Add one above!
-                    </div>
-                  ) : (
-                    currentDepartment.classes.map((cls, idx) => (
-                      <div key={idx} style={{ ...styles.builderItem, cursor: 'default', background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏫 {cls}</span>
-                        </span>
-                        <button 
-                          type="button" 
-                          style={styles.deleteMiniBtn} 
-                          onClick={() => removeClass(activeProgIdx, activeDeptIdx, idx)}
-                          title="Remove Class"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
                   )}
                 </div>
               </div>
@@ -668,9 +590,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onSuccess, onBackToLogin
                       {p.departments.map((d, dIdx) => (
                         <div key={dIdx} style={styles.hierarchyDept}>
                           <span>├─ 📁 {d.name}</span>
-                          <span style={styles.hierarchyClassList}>
-                            ({d.classes.join(', ') || 'No Classes'})
-                          </span>
                         </div>
                       ))}
                     </div>
@@ -840,7 +759,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   builderLayout: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: '16px',
     minHeight: '280px',
     width: '100%',

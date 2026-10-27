@@ -98,7 +98,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
   const [appsLoading, setAppsLoading] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingDriveId, setEditingDriveId] = useState<string | null>(null);
-  const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', phone: '', class_id: '' });
+  const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', phone: '', department_id: '' });
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [facultyLoading, setFacultyLoading] = useState(false);
   const [facultySearch, setFacultySearch] = useState('');
@@ -342,20 +342,21 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     else flash('Failed to delete drive.', false);
   };
 
-  const tpoSelectedClasses = (() => {
-    if (!facultyDeptId) return [];
-    for (const p of hierarchy) {
-      for (const d of p.departments || []) {
-        if (d.id === facultyDeptId) {
-          return d.classes || [];
+
+  const getDeptInfo = (deptId?: string) => {
+    if (!deptId) return null;
+    for (const prog of hierarchy) {
+      for (const dept of prog.departments || []) {
+        if (dept.id === deptId) {
+          return dept.name;
         }
       }
     }
-    return [];
-  })();
+    return null;
+  };
 
   const getClassInfo = (classId?: string) => {
-    if (!classId) return 'Assigned Class';
+    if (!classId) return 'Assigned Department';
     for (const prog of hierarchy) {
       for (const dept of prog.departments || []) {
         for (const cls of dept.classes || []) {
@@ -365,22 +366,26 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
         }
       }
     }
-    return 'Assigned Class';
+    return 'Assigned Department';
   };
 
   const createFaculty = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!facultyDeptId) {
+      flash('Please select a Department / Branch for the Faculty Coordinator.', false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`${API}/faculty/register`, {
         method: 'POST',
         headers: h,
-        body: JSON.stringify(facultyForm)
+        body: JSON.stringify({ ...facultyForm, department_id: facultyDeptId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to appoint Faculty Coordinator');
       flash(`Faculty Coordinator appointed successfully! They can now login.`);
-      setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+      setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
       setFacultyDeptId('');
       setIsFacultyModalOpen(false);
       loadFaculty();
@@ -1426,7 +1431,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
               <button
                 onClick={() => {
-                  setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+                  setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
                   setFacultyDeptId('');
                   setIsFacultyModalOpen(true);
                 }}
@@ -1545,7 +1550,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
                         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            Class: <strong style={{ color: 'var(--text-primary)' }}>{classLabel}</strong>
+                            Branch / Dept: <strong style={{ color: 'var(--text-primary)' }}>{getDeptInfo(f.department_id) || classLabel}</strong>
                           </span>
                           <button
                             type="button"
@@ -1579,7 +1584,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                 <button
                   type="button"
                   onClick={() => {
-                    setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+                    setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
                     setFacultyDeptId('');
                     setIsFacultyModalOpen(true);
                   }}
@@ -1679,40 +1684,17 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                 <label style={s.label}>Password * <input required type="password" style={s.input} value={facultyForm.password} onChange={e => setFacultyForm({ ...facultyForm, password: e.target.value })} placeholder="Set Password" /></label>
                 <label style={s.label}>Phone Number <input style={s.input} value={facultyForm.phone} onChange={e => setFacultyForm({ ...facultyForm, phone: e.target.value })} placeholder="+91 9876543210" /></label>
                 <label style={s.label}>
-                  Department *
+                  Department / Branch *
                   <select
                     required
                     style={s.input}
                     value={facultyDeptId}
-                    onChange={e => {
-                      setFacultyDeptId(e.target.value);
-                      setFacultyForm({ ...facultyForm, class_id: '' });
-                    }}
+                    onChange={e => setFacultyDeptId(e.target.value)}
                   >
-                    <option value="">-- Select Department --</option>
+                    <option value="">-- Select Department / Branch --</option>
                     {hierarchy.flatMap((p: any) => p.departments || []).map((d: any) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ ...s.label, opacity: facultyDeptId ? 1 : 0.6 }}>
-                  Assigned Class *
-                  <select
-                    required
-                    disabled={!facultyDeptId}
-                    style={s.input}
-                    value={facultyForm.class_id}
-                    onChange={e => setFacultyForm({ ...facultyForm, class_id: e.target.value })}
-                  >
-                    <option value="">
-                      {facultyDeptId ? '-- Select Class --' : '-- Select Department First --'}
-                    </option>
-                    {tpoSelectedClasses.map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
                       </option>
                     ))}
                   </select>

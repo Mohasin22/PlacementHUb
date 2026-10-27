@@ -588,13 +588,6 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
           </div>
 
           <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>CLASS / SECTION</div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
-              {profile?.class_name || academicId.class_name || 'Section-A'}
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
             <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>GRADUATION YEAR</div>
             <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
               {profile?.expected_graduation_year || profile?.passout_year || academicId.graduation_year || 2027}
