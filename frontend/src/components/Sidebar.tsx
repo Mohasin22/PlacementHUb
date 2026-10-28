@@ -6,7 +6,6 @@ import {
   CalendarIcon,
   UsersIcon,
   UserIcon,
-  UploadIcon,
   BuildingIcon,
   ClassIcon,
   GoogleDriveIcon
@@ -39,7 +38,6 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
           { key: 'analytics', label: 'Analytics', icon: AnalyticsIcon },
           { key: 'events', label: 'Seminars & Events', icon: CalendarIcon },
           { key: 'faculty', label: 'Faculty Coordinators', icon: BuildingIcon },
-          { key: 'export', label: 'Export Data', icon: UploadIcon },
         ];
       case 'Dean':
         return [

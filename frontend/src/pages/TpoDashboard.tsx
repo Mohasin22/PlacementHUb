@@ -34,7 +34,7 @@ interface TpoDashboardProps {
   setActiveTab?: (tab: string) => void;
 }
 
-type Tab = 'drives' | 'analytics' | 'events' | 'create' | 'applicants' | 'export' | 'upload' | 'faculty' | 'students';
+type Tab = 'drives' | 'analytics' | 'events' | 'create' | 'applicants' | 'upload' | 'faculty' | 'students';
 
 const STATUS_OPTS = ['Applied', 'Shortlisted', 'Selected', 'On-Hold', 'Rejected', 'Cancelled', 'Placed'];
 const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
@@ -46,13 +46,6 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   Cancelled: { bg: 'rgba(239,68,68,0.18)', color: '#F87171' },
   'On-Hold': { bg: 'rgba(156,163,175,0.1)', color: '#6B7280' },
 };
-const ALL_EXPORT_FIELDS = [
-  'Student ID / Roll Number', 'Full Name', 'Institutional Email', 'Personal Email', 'Mobile Number',
-  'Program', 'Department', 'Class / Section', 'Year of Passing',
-  '10th Percentage', '12th / Diploma Percentage', 'UG CGPA', 'UG Percentage',
-  'Current Backlogs', 'Skills', 'Projects', 'Internships', 'Certifications',
-  'LinkedIn', 'GitHub', 'Portfolio', 'Resume URL', 'Application Status'
-];
 
 const EMPTY_FORM = {
   companyName: '', jobRole: '', package: '', location: '', mode: 'On-campus',
@@ -85,7 +78,11 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
       setShowBulkUpload(true);
       if (setActiveTab) setActiveTab('students');
     } else if (activeTab && activeTab !== tab) {
-      setTabState(activeTab as Tab);
+      if ((activeTab as any) === 'export') {
+        setTabState('drives');
+      } else {
+        setTabState(activeTab as Tab);
+      }
     }
   }, [activeTab]);
 
@@ -105,9 +102,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
   const [isFacultyModalOpen, setIsFacultyModalOpen] = useState(false);
   const [students, setStudents] = useState<any[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
-  const [exportDriveId, setExportDriveId] = useState('');
-  const [exportStatus, setExportStatus] = useState('Shortlisted');
-  const [exportFields, setExportFields] = useState<string[]>(['Name', 'Roll Number', 'Institute Email', 'CGPA', 'Mobile', 'Skills', 'Resume Link', 'Status']);
   const [_tpoProgramName, setTpoProgramName] = useState<string>('');
   const [facultyDeptId, setFacultyDeptId] = useState<string>('');
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -472,21 +466,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     }
   };
 
-  const exportExcel = async () => {
-    if (!exportDriveId) { flash('Select a drive.', false); return; }
-    const res = await fetch(`${API}/tpo/drives/${exportDriveId}/export`, {
-      method: 'POST', headers: h, body: JSON.stringify({ fields: exportFields, status_filter: exportStatus || null }),
-    });
-    if (res.ok) {
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url;
-      const drive = drives.find(d => d.id === exportDriveId);
-      a.download = drive ? `${drive.company_name}_HR_Report.xlsx` : 'PlacementHub_Export.xlsx';
-      a.click(); URL.revokeObjectURL(url);
-      flash('Excel report downloaded!');
-    } else flash('Export failed.', false);
-  };
 
   const toggleSelect = (id: string) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -1343,48 +1322,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
 
 
-      {/* ── EXPORT HR REPORT TAB ── */}
-      {tab === 'export' && (
-        <div style={s.formCard}>
-          <h3 style={s.formTitle}>Export Recruitment Data to Excel</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 16 }}>
-            <label style={s.label}>
-              Select Placement Drive *
-              <select style={s.input} value={exportDriveId} onChange={e => setExportDriveId(e.target.value)}>
-                <option value="">-- Choose Drive --</option>
-                {drives.map(d => (
-                  <option key={d.id} value={d.id}>{d.company_name} — {d.job_role}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={s.label}>
-              Filter Status
-              <select style={s.input} value={exportStatus} onChange={e => setExportStatus(e.target.value)}>
-                <option value="">All Statuses</option>
-                {STATUS_OPTS.map(st => <option key={st} value={st}>{st}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <div style={{ marginTop: 24 }}>
-            <label style={s.sectionHeader}>Select Columns to Export</label>
-            <div style={s.chipRow}>
-              {ALL_EXPORT_FIELDS.map(f => (
-                <button key={f} type="button" onClick={() => setExportFields(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
-                  style={{ ...s.chip, ...(exportFields.includes(f) ? s.chipSelected : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {exportFields.includes(f) ? <CheckIcon size={13} color="#3B82F6" /> : <PlusIcon size={13} color="currentColor" />}
-                  <span>{f}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button onClick={exportExcel} style={{ ...s.primaryBtn, width: '100%', marginTop: 28 }}>
-            <FileSpreadsheetIcon size={18} /> Generate & Download Excel
-          </button>
-        </div>
-      )}
 
       {/* ── FACULTY COORDINATORS TAB ── */}
       {tab === 'faculty' && (

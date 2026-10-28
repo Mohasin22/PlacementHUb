@@ -9,7 +9,8 @@ import {
   RefreshIcon,
   GraduationCapIcon,
   BuildingIcon,
-  AlertIcon
+  AlertIcon,
+  PlusIcon
 } from './Icons';
 
 export interface CandidateStudent {
@@ -37,7 +38,240 @@ export interface CandidateStudent {
   eligibility_breakdown?: Array<{ criterion: string; status: string; detail: string }>;
   application_status?: string;
   application_id?: string | null;
+  institutional_email?: string;
+  personal_email?: string;
+  program_name?: string;
+  ug_percentage?: number | null;
+  skills?: string[] | string;
+  projects?: string[] | string;
+  internships?: string[] | string;
+  certifications?: string[] | string;
+  linkedin?: string;
+  github?: string;
+  portfolio?: string;
 }
+
+export interface ExportColumnDef {
+  key: string;
+  label: string;
+  category: 'Identity & Contact' | 'Academics' | 'Drive & Eligibility' | 'Profiles & Skills';
+  defaultSelected: boolean;
+  getValue: (c: CandidateStudent, isEligible: boolean, reasons: string[]) => string;
+}
+
+export const EXPORT_COLUMNS: ExportColumnDef[] = [
+  // Identity & Contact
+  {
+    key: 'roll_number',
+    label: 'Roll Number / Student ID',
+    category: 'Identity & Contact',
+    defaultSelected: true,
+    getValue: (c) => c.roll_number || '',
+  },
+  {
+    key: 'name',
+    label: 'Full Name',
+    category: 'Identity & Contact',
+    defaultSelected: true,
+    getValue: (c) => c.name || '',
+  },
+  {
+    key: 'gender',
+    label: 'Gender',
+    category: 'Identity & Contact',
+    defaultSelected: true,
+    getValue: (c) => c.gender || '',
+  },
+  {
+    key: 'institutional_email',
+    label: 'Institutional Email',
+    category: 'Identity & Contact',
+    defaultSelected: true,
+    getValue: (c) => c.institutional_email || c.email || '',
+  },
+  {
+    key: 'personal_email',
+    label: 'Personal Email',
+    category: 'Identity & Contact',
+    defaultSelected: false,
+    getValue: (c) => c.personal_email || '',
+  },
+  {
+    key: 'mobile',
+    label: 'Mobile Number',
+    category: 'Identity & Contact',
+    defaultSelected: true,
+    getValue: (c) => c.mobile || '',
+  },
+
+  // Academics
+  {
+    key: 'department',
+    label: 'Department / Branch',
+    category: 'Academics',
+    defaultSelected: true,
+    getValue: (c) => c.department_name || '',
+  },
+  {
+    key: 'class_section',
+    label: 'Class / Section',
+    category: 'Academics',
+    defaultSelected: false,
+    getValue: (c) => c.class_name || '',
+  },
+  {
+    key: 'program',
+    label: 'Program / Degree',
+    category: 'Academics',
+    defaultSelected: false,
+    getValue: (c) => c.program_name || '',
+  },
+  {
+    key: 'study_year',
+    label: 'Current Study Year',
+    category: 'Academics',
+    defaultSelected: true,
+    getValue: (c) => c.study_year_label || (c.current_study_year ? `${c.current_study_year} Year` : ''),
+  },
+  {
+    key: 'passout_year',
+    label: 'Year of Passing',
+    category: 'Academics',
+    defaultSelected: false,
+    getValue: (c) => (c.passout_year !== undefined && c.passout_year !== null) ? String(c.passout_year) : '',
+  },
+  {
+    key: 'cgpa',
+    label: 'UG CGPA',
+    category: 'Academics',
+    defaultSelected: true,
+    getValue: (c) => (c.cgpa !== undefined && c.cgpa !== null) ? Number(c.cgpa).toFixed(2) : '',
+  },
+  {
+    key: 'ug_percentage',
+    label: 'UG Percentage',
+    category: 'Academics',
+    defaultSelected: false,
+    getValue: (c) => (c.ug_percentage !== undefined && c.ug_percentage !== null) ? `${c.ug_percentage}%` : '',
+  },
+  {
+    key: 'active_backlogs',
+    label: 'Active Backlogs',
+    category: 'Academics',
+    defaultSelected: true,
+    getValue: (c) => (c.active_backlogs !== undefined && c.active_backlogs !== null) ? String(c.active_backlogs) : '0',
+  },
+  {
+    key: 'total_backlogs',
+    label: 'Total Backlogs',
+    category: 'Academics',
+    defaultSelected: false,
+    getValue: (c) => (c.total_backlogs !== undefined && c.total_backlogs !== null) ? String(c.total_backlogs) : '',
+  },
+  {
+    key: 'tenth_percentage',
+    label: '10th Percentage',
+    category: 'Academics',
+    defaultSelected: true,
+    getValue: (c) => (c.tenth_percentage !== undefined && c.tenth_percentage !== null) ? `${c.tenth_percentage}%` : '',
+  },
+  {
+    key: 'twelfth_percentage',
+    label: '12th / Diploma Percentage',
+    category: 'Academics',
+    defaultSelected: true,
+    getValue: (c) => (c.twelfth_percentage !== undefined && c.twelfth_percentage !== null) ? `${c.twelfth_percentage}%` : '',
+  },
+
+  // Drive & Eligibility
+  {
+    key: 'drive_eligibility',
+    label: 'Drive Eligibility',
+    category: 'Drive & Eligibility',
+    defaultSelected: true,
+    getValue: (_c, isEligible) => isEligible ? 'Eligible' : 'Not Eligible',
+  },
+  {
+    key: 'eligibility_reasons',
+    label: 'Eligibility Reasons / Remarks',
+    category: 'Drive & Eligibility',
+    defaultSelected: true,
+    getValue: (_c, _isEligible, reasons) => reasons.length > 0 ? reasons.join('; ') : 'All criteria satisfied',
+  },
+  {
+    key: 'application_status',
+    label: 'Current Status in Drive',
+    category: 'Drive & Eligibility',
+    defaultSelected: true,
+    getValue: (c) => c.application_status || 'Not Applied',
+  },
+
+  // Profiles & Skills
+  {
+    key: 'resume_url',
+    label: 'Resume URL',
+    category: 'Profiles & Skills',
+    defaultSelected: true,
+    getValue: (c) => c.resume_url || '',
+  },
+  {
+    key: 'skills',
+    label: 'Technical Skills',
+    category: 'Profiles & Skills',
+    defaultSelected: false,
+    getValue: (c) => Array.isArray(c.skills) ? c.skills.join(', ') : (c.skills || ''),
+  },
+  {
+    key: 'projects',
+    label: 'Projects',
+    category: 'Profiles & Skills',
+    defaultSelected: false,
+    getValue: (c) => Array.isArray(c.projects) ? c.projects.join('; ') : (c.projects || ''),
+  },
+  {
+    key: 'internships',
+    label: 'Internships',
+    category: 'Profiles & Skills',
+    defaultSelected: false,
+    getValue: (c) => Array.isArray(c.internships) ? c.internships.join('; ') : (c.internships || ''),
+  },
+  {
+    key: 'certifications',
+    label: 'Certifications',
+    category: 'Profiles & Skills',
+    defaultSelected: false,
+    getValue: (c) => Array.isArray(c.certifications) ? c.certifications.join('; ') : (c.certifications || ''),
+  },
+  {
+    key: 'linkedin',
+    label: 'LinkedIn Profile',
+    category: 'Profiles & Skills',
+    defaultSelected: false,
+    getValue: (c) => c.linkedin || '',
+  },
+  {
+    key: 'github',
+    label: 'GitHub Profile',
+    category: 'Profiles & Skills',
+    defaultSelected: false,
+    getValue: (c) => c.github || '',
+  },
+  {
+    key: 'portfolio',
+    label: 'Portfolio Link',
+    category: 'Profiles & Skills',
+    defaultSelected: false,
+    getValue: (c) => c.portfolio || '',
+  },
+];
+
+export const HIGHLIGHT_PRESETS = [
+  { label: 'Yellow Highlighter', color: 'FEF08A', textColor: '0F172A', badge: '#FEF08A', desc: 'Classic spreadsheet highlighter' },
+  { label: 'Excel Green', color: '107C41', textColor: 'FFFFFF', badge: '#107C41', desc: 'Official Excel theme accent' },
+  { label: 'Corporate Blue', color: '1E3A8A', textColor: 'FFFFFF', badge: '#1E3A8A', desc: 'Formal executive report' },
+  { label: 'Warm Amber', color: 'FDE68A', textColor: '78350F', badge: '#FDE68A', desc: 'Soft warm highlight' },
+  { label: 'Modern Indigo', color: '4F46E5', textColor: 'FFFFFF', badge: '#4F46E5', desc: 'Contemporary purple/indigo' },
+];
 
 interface DriveStudentExcelSelectorProps {
   token: string;
@@ -81,6 +315,65 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
   const [selectionStatus, setSelectionStatus] = useState<'Selected' | 'Shortlisted'>('Selected');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; ok: boolean } | null>(null);
+
+  // ── Column Selection & Export Modal State ──
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<'filtered' | 'checked'>('filtered');
+  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
+  const [headingHighlightColor, setHeadingHighlightColor] = useState<string>('FEF08A');
+  const [exporting, setExporting] = useState<boolean>(false);
+  const [selectedExportKeys, setSelectedExportKeys] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('tpo_export_columns_v2');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return EXPORT_COLUMNS.filter(col => col.defaultSelected).map(col => col.key);
+  });
+
+  const toggleExportColumn = (key: string) => {
+    setSelectedExportKeys(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      try {
+        localStorage.setItem('tpo_export_columns_v2', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const selectAllExportColumns = () => {
+    const all = EXPORT_COLUMNS.map(col => col.key);
+    setSelectedExportKeys(all);
+    try {
+      localStorage.setItem('tpo_export_columns_v2', JSON.stringify(all));
+    } catch {}
+  };
+
+  const deselectAllExportColumns = () => {
+    setSelectedExportKeys([]);
+    try {
+      localStorage.setItem('tpo_export_columns_v2', JSON.stringify([]));
+    } catch {}
+  };
+
+  const resetDefaultExportColumns = () => {
+    const def = EXPORT_COLUMNS.filter(col => col.defaultSelected).map(col => col.key);
+    setSelectedExportKeys(def);
+    try {
+      localStorage.setItem('tpo_export_columns_v2', JSON.stringify(def));
+    } catch {}
+  };
+
+  const openExportModal = () => {
+    if (filteredCandidates.length === 0) {
+      showToast('No students available to export', false);
+      return;
+    }
+    setExportScope(checkedIds.size > 0 ? 'checked' : 'filtered');
+    setIsExportModalOpen(true);
+  };
 
   const showToast = (text: string, ok: boolean = true) => {
     setToastMessage({ text, ok });
@@ -338,60 +631,100 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
     }
   };
 
-  // ── Export Current View to CSV / Excel File ──
-  const handleExportCsv = () => {
-    if (filteredCandidates.length === 0) {
-      showToast('No students to export', false);
-      return;
-    }
-
-    const headers = [
-      'Roll Number',
-      'Student Name',
-      'Email',
-      'Mobile',
-      'Branch',
-      'Year',
-      'CGPA',
-      'Active Backlogs',
-      '10th %',
-      '12th %',
-      'Gender',
-      'Eligible For Drive',
-      'Eligibility Reasons',
-      'Current Status in Drive'
-    ];
-
-    const rows = filteredCandidates.map(c => {
-      const { isEligible, reasons } = evaluateStudentCustom(c);
-      return [
-        `"${c.roll_number}"`,
-        `"${c.name}"`,
-        `"${c.email}"`,
-        `"${c.mobile}"`,
-        `"${c.department_name}"`,
-        `"${c.study_year_label || `${c.current_study_year} Year`}"`,
-        `"${c.cgpa}"`,
-        `"${c.active_backlogs}"`,
-        `"${c.tenth_percentage ?? ''}"`,
-        `"${c.twelfth_percentage ?? ''}"`,
-        `"${c.gender || ''}"`,
-        `"${isEligible ? 'YES' : 'NO'}"`,
-        `"${reasons.join('; ')}"`,
-        `"${c.application_status || 'Not Applied'}"`
-      ].join(',');
-    });
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
+  // ── Helper: Client-Side CSV Download Fallback ──
+  const downloadCsv = (headers: string[], rows: any[][], baseFilename: string, count: number) => {
+    const csvHeaders = headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(',');
+    const csvRows = rows.map(r => r.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','));
+    const csvContent = '\uFEFF' + [csvHeaders, ...csvRows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    const companyName = (driveDetails?.company_name || 'Placement_Drive').replace(/\s+/g, '_');
-    link.setAttribute('download', `${companyName}_Student_Candidates_${selectedBranch}.csv`);
+    link.href = url;
+    link.download = `${baseFilename}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('Exported candidate sheet to CSV/Excel format');
+    URL.revokeObjectURL(url);
+
+    setIsExportModalOpen(false);
+    showToast(`Exported ${count} candidate(s) to CSV!`);
+  };
+
+  // ── Export Candidates to Excel (.xlsx with highlighted headers) or CSV ──
+  const handleExport = async () => {
+    const targetStudents = (exportScope === 'checked' && checkedIds.size > 0)
+      ? candidates.filter(c => checkedIds.has(c.student_id))
+      : filteredCandidates;
+
+    if (targetStudents.length === 0) {
+      showToast('No students to export in chosen scope', false);
+      return;
+    }
+
+    if (selectedExportKeys.length === 0) {
+      showToast('Please select at least one column to export', false);
+      return;
+    }
+
+    const activeColDefs = EXPORT_COLUMNS.filter(col => selectedExportKeys.includes(col.key));
+    const rawHeaders = activeColDefs.map(col => col.label);
+
+    const rawRows = targetStudents.map(c => {
+      const { isEligible, reasons } = evaluateStudentCustom(c);
+      return activeColDefs.map(col => col.getValue(c, isEligible, reasons));
+    });
+
+    const companyName = (driveDetails?.company_name || 'Placement_Drive').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const branchTag = selectedBranch === 'ALL' ? 'All_Branches' : selectedBranch.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const scopeTag = exportScope === 'checked' && checkedIds.size > 0 ? `Selected_${targetStudents.length}` : `All_${targetStudents.length}`;
+    const baseFilename = `${companyName}_Candidates_${scopeTag}_${branchTag}`;
+
+    if (exportFormat === 'xlsx') {
+      setExporting(true);
+      try {
+        const selectedPreset = HIGHLIGHT_PRESETS.find(p => p.color === headingHighlightColor) || HIGHLIGHT_PRESETS[0];
+        const res = await fetch(`${API_BASE}/tpo/drives/${drive.id}/export-custom-excel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            headers: rawHeaders,
+            rows: rawRows,
+            filename: `${baseFilename}.xlsx`,
+            sheet_title: (driveDetails?.company_name || 'Candidates').slice(0, 31),
+            highlight_color: selectedPreset.color,
+            highlight_text_color: selectedPreset.textColor,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Export failed with HTTP status ${res.status}`);
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${baseFilename}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setIsExportModalOpen(false);
+        showToast(`Exported ${targetStudents.length} candidate(s) to Excel with highlighted column headings!`);
+      } catch (err: any) {
+        console.warn('Backend Excel export error, falling back to CSV:', err);
+        showToast('Exporting as CSV format...', true);
+        downloadCsv(rawHeaders, rawRows, baseFilename, targetStudents.length);
+      } finally {
+        setExporting(false);
+      }
+    } else {
+      downloadCsv(rawHeaders, rawRows, baseFilename, targetStudents.length);
+    }
   };
 
   // ── Submit Selection to Backend ──
@@ -989,7 +1322,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
             </button>
 
             <button
-              onClick={handleExportCsv}
+              onClick={openExportModal}
               style={{
                 background: 'linear-gradient(135deg, #107C41 0%, #0F6334 100%)',
                 border: 'none',
@@ -1004,6 +1337,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                 gap: 6,
                 boxShadow: '0 2px 6px rgba(16, 124, 65, 0.25)',
               }}
+              title="Select columns to export and download CSV sheet"
             >
               <FileSpreadsheetIcon size={15} /> Export Sheet (.csv)
             </button>
@@ -1415,6 +1749,548 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                 ? 'Processing...'
                 : `Select ${checkedIds.size > 0 ? checkedIds.size : ''} Students for Drive`}
             </button>
+        {/* ── EXPORT COLUMNS MODAL ── */}
+        {isExportModalOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(11, 25, 44, 0.75)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 100005,
+              padding: 16,
+              boxSizing: 'border-box',
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsExportModalOpen(false);
+            }}
+          >
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 16,
+                width: '100%',
+                maxWidth: 820,
+                maxHeight: '92vh',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.5)',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  padding: '18px 24px',
+                  borderBottom: '1px solid var(--border-color)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: 'var(--bg-main)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 10,
+                      background: 'rgba(16, 124, 65, 0.15)',
+                      border: '1px solid rgba(16, 124, 65, 0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#107C41',
+                    }}
+                  >
+                    <FileSpreadsheetIcon size={24} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      Export Sheet (.csv)
+                    </h3>
+                    <p style={{ margin: '3px 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                      Select columns to export for {driveDetails?.company_name || 'Placement Drive'} ({driveDetails?.job_role || 'Candidates'})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: 6,
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Close"
+                >
+                  <CloseIcon size={20} />
+                </button>
+              </div>
+
+              {/* Scrollable Body */}
+              <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Export Format & Column Heading Highlight Options */}
+                <div
+                  style={{
+                    background: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 12,
+                    padding: '14px 18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                    <div>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        File Format
+                      </span>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                        Choose Excel (.xlsx) to export with highlighted column headings & frozen top pane
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setExportFormat('xlsx')}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 8,
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          border: exportFormat === 'xlsx' ? '1px solid #107C41' : '1px solid var(--border-color)',
+                          background: exportFormat === 'xlsx' ? 'rgba(16, 124, 65, 0.15)' : 'var(--card-bg)',
+                          color: exportFormat === 'xlsx' ? '#107C41' : 'var(--text-secondary)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          boxShadow: exportFormat === 'xlsx' ? '0 2px 6px rgba(16, 124, 65, 0.2)' : 'none',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <FileSpreadsheetIcon size={15} color={exportFormat === 'xlsx' ? '#107C41' : 'currentColor'} />
+                        <span>Excel (.xlsx)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setExportFormat('csv')}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 8,
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          border: exportFormat === 'csv' ? '1px solid #3B82F6' : '1px solid var(--border-color)',
+                          background: exportFormat === 'csv' ? 'rgba(59, 130, 246, 0.15)' : 'var(--card-bg)',
+                          color: exportFormat === 'csv' ? '#3B82F6' : 'var(--text-secondary)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <span>CSV (.csv)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {exportFormat === 'xlsx' && (
+                    <div
+                      style={{
+                        paddingTop: 10,
+                        borderTop: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          Highlight Column Headings:
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {HIGHLIGHT_PRESETS.map((preset) => {
+                            const isSelected = headingHighlightColor === preset.color;
+                            return (
+                              <button
+                                key={preset.color}
+                                type="button"
+                                onClick={() => setHeadingHighlightColor(preset.color)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  padding: '5px 10px',
+                                  borderRadius: 8,
+                                  fontSize: '0.78rem',
+                                  fontWeight: isSelected ? 700 : 500,
+                                  cursor: 'pointer',
+                                  border: isSelected ? '2px solid #2563EB' : '1px solid var(--border-color)',
+                                  background: isSelected ? 'rgba(37, 99, 235, 0.1)' : 'var(--card-bg)',
+                                  color: 'var(--text-primary)',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: 14,
+                                    height: 14,
+                                    borderRadius: 3,
+                                    backgroundColor: preset.badge,
+                                    border: '1px solid rgba(0,0,0,0.25)',
+                                    display: 'inline-block',
+                                  }}
+                                />
+                                <span>{preset.label}</span>
+                                {isSelected && <CheckIcon size={12} color="#2563EB" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Heading Highlight Live Preview in Excel */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          background: 'var(--card-bg)',
+                          padding: '8px 12px',
+                          borderRadius: 8,
+                          border: '1px dashed var(--border-color)',
+                          fontSize: '0.78rem',
+                          color: 'var(--text-secondary)',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>Heading Row Preview:</span>
+                        <div
+                          style={{
+                            background: `#${headingHighlightColor}`,
+                            color: HIGHLIGHT_PRESETS.find(p => p.color === headingHighlightColor)?.textColor === 'FFFFFF' ? '#FFFFFF' : '#0F172A',
+                            fontWeight: 800,
+                            padding: '4px 12px',
+                            borderRadius: 4,
+                            border: '1px solid rgba(0,0,0,0.2)',
+                            fontSize: '0.78rem',
+                            letterSpacing: '0.02em',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                          }}
+                        >
+                          Roll Number | Full Name | Branch | Year | CGPA | Status
+                        </div>
+                        <span style={{ fontSize: '0.74rem', color: '#10B981', fontWeight: 600 }}>
+                          ✓ Highlighted fill, bold font, and top row frozen in Excel
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Export Scope Selector */}
+                <div
+                  style={{
+                    background: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 12,
+                    padding: '14px 18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}
+                >
+                  <label style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Export Scope (Students to Include)
+                  </label>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setExportScope('filtered')}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: 8,
+                        fontSize: '0.84rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        border: exportScope === 'filtered' ? '1px solid #107C41' : '1px solid var(--border-color)',
+                        background: exportScope === 'filtered' ? 'rgba(16, 124, 65, 0.12)' : 'var(--card-bg)',
+                        color: exportScope === 'filtered' ? '#107C41' : 'var(--text-secondary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {exportScope === 'filtered' && <CheckIcon size={14} color="#107C41" />}
+                      <span>All Filtered Students ({filteredCandidates.length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (checkedIds.size > 0) setExportScope('checked');
+                      }}
+                      disabled={checkedIds.size === 0}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: 8,
+                        fontSize: '0.84rem',
+                        fontWeight: 600,
+                        cursor: checkedIds.size === 0 ? 'not-allowed' : 'pointer',
+                        border: exportScope === 'checked' ? '1px solid #107C41' : '1px solid var(--border-color)',
+                        background: exportScope === 'checked' ? 'rgba(16, 124, 65, 0.12)' : 'var(--card-bg)',
+                        color: checkedIds.size === 0 ? 'var(--text-secondary)' : (exportScope === 'checked' ? '#107C41' : 'var(--text-primary)'),
+                        opacity: checkedIds.size === 0 ? 0.5 : 1,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        transition: 'all 0.15s ease',
+                      }}
+                      title={checkedIds.size === 0 ? 'Check student checkboxes in the table to export specific students' : ''}
+                    >
+                      {exportScope === 'checked' && <CheckIcon size={14} color="#107C41" />}
+                      <span>Checked Students Only ({checkedIds.size})</span>
+                    </button>
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    {exportScope === 'checked' && checkedIds.size > 0
+                      ? `Exporting only the ${checkedIds.size} checked student(s) selected in the candidate sheet.`
+                      : `Exporting all ${filteredCandidates.length} students currently matching your branch (${selectedBranch}), year (${selectedYear}) and eligibility filters.`}
+                  </span>
+                </div>
+
+                {/* Column Selection Section */}
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 14,
+                      flexWrap: 'wrap',
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        Select Columns to Export
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.78rem',
+                          padding: '3px 10px',
+                          borderRadius: 14,
+                          background: selectedExportKeys.length > 0 ? 'rgba(16, 124, 65, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          color: selectedExportKeys.length > 0 ? '#107C41' : '#EF4444',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {selectedExportKeys.length} of {EXPORT_COLUMNS.length} selected
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={selectAllExportColumns}
+                        style={{
+                          background: 'var(--bg-main)',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-primary)',
+                          padding: '5px 12px',
+                          borderRadius: 6,
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Select All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={deselectAllExportColumns}
+                        style={{
+                          background: 'var(--bg-main)',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-secondary)',
+                          padding: '5px 12px',
+                          borderRadius: 6,
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Deselect All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetDefaultExportColumns}
+                        style={{
+                          background: 'rgba(59, 130, 246, 0.1)',
+                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          color: '#3B82F6',
+                          padding: '5px 12px',
+                          borderRadius: 6,
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Default Set
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Categories */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {(['Identity & Contact', 'Academics', 'Drive & Eligibility', 'Profiles & Skills'] as const).map(category => {
+                      const cols = EXPORT_COLUMNS.filter(col => col.category === category);
+                      return (
+                        <div
+                          key={category}
+                          style={{
+                            background: 'var(--bg-main)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: 12,
+                            padding: '12px 16px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                              color: 'var(--text-secondary)',
+                              marginBottom: 10,
+                            }}
+                          >
+                            {category}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {cols.map(col => {
+                              const isSelected = selectedExportKeys.includes(col.key);
+                              return (
+                                <button
+                                  key={col.key}
+                                  type="button"
+                                  onClick={() => toggleExportColumn(col.key)}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    padding: '6px 12px',
+                                    borderRadius: 8,
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    border: isSelected ? '1px solid #107C41' : '1px solid var(--border-color)',
+                                    background: isSelected ? 'rgba(16, 124, 65, 0.12)' : 'var(--card-bg)',
+                                    color: isSelected ? '#107C41' : 'var(--text-secondary)',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  {isSelected ? (
+                                    <CheckIcon size={14} color="#107C41" />
+                                  ) : (
+                                    <PlusIcon size={14} color="currentColor" />
+                                  )}
+                                  <span>{col.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div
+                style={{
+                  padding: '16px 24px',
+                  borderTop: '1px solid var(--border-color)',
+                  background: 'var(--bg-main)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Format: <strong>{exportFormat === 'xlsx' ? 'Excel Spreadsheet (.xlsx) — Highlighted Headings' : 'CSV Spreadsheet (.csv)'}</strong>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsExportModalOpen(false)}
+                    disabled={exporting}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 16px',
+                      borderRadius: 8,
+                      fontWeight: 600,
+                      cursor: exporting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExport}
+                    disabled={selectedExportKeys.length === 0 || exporting}
+                    style={{
+                      background: selectedExportKeys.length === 0 || exporting
+                        ? 'var(--border-color)'
+                        : 'linear-gradient(135deg, #107C41 0%, #0F6334 100%)',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      padding: '8px 20px',
+                      borderRadius: 8,
+                      fontWeight: 700,
+                      fontSize: '0.86rem',
+                      cursor: selectedExportKeys.length === 0 || exporting ? 'not-allowed' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: selectedExportKeys.length === 0 || exporting ? 'none' : '0 2px 8px rgba(16, 124, 65, 0.3)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <FileSpreadsheetIcon size={16} />
+                    {exporting
+                      ? 'Generating Sheet...'
+                      : `Download ${exportFormat.toUpperCase()} (${exportScope === 'checked' && checkedIds.size > 0 ? checkedIds.size : filteredCandidates.length} Students, ${selectedExportKeys.length} Cols)`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
           </div>
         </div>
       </div>
