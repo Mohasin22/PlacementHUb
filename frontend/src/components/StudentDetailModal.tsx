@@ -21,13 +21,16 @@ import {
   UserIcon,
   UploadIcon,
   SparklesIcon,
+  GoogleDriveIcon,
 } from './Icons';
 import { StudentAvatar } from './StudentAvatar';
+import { StudentGDriveVault } from './StudentGDriveVault';
 
 interface StudentDetailModalProps {
   student: any;
   isOpen: boolean;
   onClose: () => void;
+  token?: string;
 }
 
 export function formatDocumentUrl(rawUrl?: string | null): {
@@ -258,8 +261,9 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   student,
   isOpen,
   onClose,
+  token,
 }) => {
-  const [activeTab, setActiveTab] = useState<'academics' | 'education' | 'skills' | 'contact'>('academics');
+  const [activeTab, setActiveTab] = useState<'academics' | 'education' | 'skills' | 'contact' | 'gdrive_vault'>('academics');
   const [copied, setCopied] = useState(false);
 
   // Full Screen Preview Modal State
@@ -628,6 +632,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             { id: 'academics', label: 'Academics & SGPAs', icon: <AnalyticsIcon size={16} color="currentColor" /> },
             { id: 'education', label: 'Education History', icon: <GraduationCapIcon size={16} color="currentColor" /> },
             { id: 'skills', label: 'Skills & Projects', icon: <CodeIcon size={16} color="currentColor" />, highlight: resumeDoc.hasUrl || techCertsDoc.hasUrl },
+            { id: 'gdrive_vault', label: 'Google Drive PLACEMENT Vault', icon: <GoogleDriveIcon size={16} />, highlight: true },
             { id: 'contact', label: 'Personal & Contact', icon: <UserIcon size={16} color="currentColor" /> },
           ].map((t) => (
             <button
@@ -1775,6 +1780,18 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* 5. GOOGLE DRIVE PLACEMENT VAULT TAB (STAFF INSPECTION) */}
+          {activeTab === 'gdrive_vault' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <StudentGDriveVault
+                token={token || JSON.parse(localStorage.getItem('auth') || '{}').token || ''}
+                studentId={student.id || student._id}
+                isStaffMode={true}
+                studentProfile={student}
+              />
             </div>
           )}
         </div>

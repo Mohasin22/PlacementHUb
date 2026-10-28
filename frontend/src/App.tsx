@@ -410,7 +410,8 @@ export default function App() {
                 )}
                 {auth.role === 'Student' && (
                   <div className="animate-fade-in">
-                    {currentTab === 'profile' && <StudentProfile token={auth.token} />}
+                    {currentTab === 'profile' && <StudentProfile token={auth.token} defaultTab="profile" />}
+                    {currentTab === 'drive_vault' && <StudentProfile token={auth.token} defaultTab="gdrive_vault" />}
                     {currentTab === 'drives' && <StudentDrives token={auth.token} activeTab="drives" />}
                     {currentTab === 'events' && <StudentDrives token={auth.token} activeTab="events" />}
                   </div>
