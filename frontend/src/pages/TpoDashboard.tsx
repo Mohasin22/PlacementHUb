@@ -34,7 +34,7 @@ interface TpoDashboardProps {
   setActiveTab?: (tab: string) => void;
 }
 
-type Tab = 'drives' | 'analytics' | 'events' | 'create' | 'applicants' | 'export' | 'upload' | 'faculty' | 'students';
+type Tab = 'drives' | 'analytics' | 'events' | 'create' | 'applicants' | 'upload' | 'faculty' | 'students';
 
 const STATUS_OPTS = ['Applied', 'Shortlisted', 'Selected', 'On-Hold', 'Rejected', 'Cancelled', 'Placed'];
 const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
@@ -46,13 +46,6 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   Cancelled: { bg: 'rgba(239,68,68,0.18)', color: '#F87171' },
   'On-Hold': { bg: 'rgba(156,163,175,0.1)', color: '#6B7280' },
 };
-const ALL_EXPORT_FIELDS = [
-  'Student ID / Roll Number', 'Full Name', 'Institutional Email', 'Personal Email', 'Mobile Number',
-  'Program', 'Department', 'Class / Section', 'Year of Passing',
-  '10th Percentage', '12th / Diploma Percentage', 'UG CGPA', 'UG Percentage',
-  'Current Backlogs', 'Skills', 'Projects', 'Internships', 'Certifications',
-  'LinkedIn', 'GitHub', 'Portfolio', 'Resume URL', 'Application Status'
-];
 
 const EMPTY_FORM = {
   companyName: '', jobRole: '', package: '', location: '', mode: 'On-campus',
@@ -85,7 +78,11 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
       setShowBulkUpload(true);
       if (setActiveTab) setActiveTab('students');
     } else if (activeTab && activeTab !== tab) {
-      setTabState(activeTab as Tab);
+      if ((activeTab as any) === 'export') {
+        setTabState('drives');
+      } else {
+        setTabState(activeTab as Tab);
+      }
     }
   }, [activeTab]);
 
@@ -98,16 +95,13 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
   const [appsLoading, setAppsLoading] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingDriveId, setEditingDriveId] = useState<string | null>(null);
-  const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', phone: '', class_id: '' });
+  const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', phone: '', department_id: '' });
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [facultyLoading, setFacultyLoading] = useState(false);
   const [facultySearch, setFacultySearch] = useState('');
   const [isFacultyModalOpen, setIsFacultyModalOpen] = useState(false);
   const [students, setStudents] = useState<any[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
-  const [exportDriveId, setExportDriveId] = useState('');
-  const [exportStatus, setExportStatus] = useState('Shortlisted');
-  const [exportFields, setExportFields] = useState<string[]>(['Name', 'Roll Number', 'Institute Email', 'CGPA', 'Mobile', 'Skills', 'Resume Link', 'Status']);
   const [_tpoProgramName, setTpoProgramName] = useState<string>('');
   const [facultyDeptId, setFacultyDeptId] = useState<string>('');
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -342,20 +336,21 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     else flash('Failed to delete drive.', false);
   };
 
-  const tpoSelectedClasses = (() => {
-    if (!facultyDeptId) return [];
-    for (const p of hierarchy) {
-      for (const d of p.departments || []) {
-        if (d.id === facultyDeptId) {
-          return d.classes || [];
+
+  const getDeptInfo = (deptId?: string) => {
+    if (!deptId) return null;
+    for (const prog of hierarchy) {
+      for (const dept of prog.departments || []) {
+        if (dept.id === deptId) {
+          return dept.name;
         }
       }
     }
-    return [];
-  })();
+    return null;
+  };
 
   const getClassInfo = (classId?: string) => {
-    if (!classId) return 'Assigned Class';
+    if (!classId) return 'Assigned Department';
     for (const prog of hierarchy) {
       for (const dept of prog.departments || []) {
         for (const cls of dept.classes || []) {
@@ -365,22 +360,26 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
         }
       }
     }
-    return 'Assigned Class';
+    return 'Assigned Department';
   };
 
   const createFaculty = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!facultyDeptId) {
+      flash('Please select a Department / Branch for the Faculty Coordinator.', false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`${API}/faculty/register`, {
         method: 'POST',
         headers: h,
-        body: JSON.stringify(facultyForm)
+        body: JSON.stringify({ ...facultyForm, department_id: facultyDeptId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to appoint Faculty Coordinator');
       flash(`Faculty Coordinator appointed successfully! They can now login.`);
-      setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+      setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
       setFacultyDeptId('');
       setIsFacultyModalOpen(false);
       loadFaculty();
@@ -467,21 +466,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     }
   };
 
-  const exportExcel = async () => {
-    if (!exportDriveId) { flash('Select a drive.', false); return; }
-    const res = await fetch(`${API}/tpo/drives/${exportDriveId}/export`, {
-      method: 'POST', headers: h, body: JSON.stringify({ fields: exportFields, status_filter: exportStatus || null }),
-    });
-    if (res.ok) {
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url;
-      const drive = drives.find(d => d.id === exportDriveId);
-      a.download = drive ? `${drive.company_name}_HR_Report.xlsx` : 'PlacementHub_Export.xlsx';
-      a.click(); URL.revokeObjectURL(url);
-      flash('Excel report downloaded!');
-    } else flash('Export failed.', false);
-  };
 
   const toggleSelect = (id: string) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -1338,48 +1322,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
 
 
-      {/* ── EXPORT HR REPORT TAB ── */}
-      {tab === 'export' && (
-        <div style={s.formCard}>
-          <h3 style={s.formTitle}>Export Recruitment Data to Excel</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 16 }}>
-            <label style={s.label}>
-              Select Placement Drive *
-              <select style={s.input} value={exportDriveId} onChange={e => setExportDriveId(e.target.value)}>
-                <option value="">-- Choose Drive --</option>
-                {drives.map(d => (
-                  <option key={d.id} value={d.id}>{d.company_name} — {d.job_role}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={s.label}>
-              Filter Status
-              <select style={s.input} value={exportStatus} onChange={e => setExportStatus(e.target.value)}>
-                <option value="">All Statuses</option>
-                {STATUS_OPTS.map(st => <option key={st} value={st}>{st}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <div style={{ marginTop: 24 }}>
-            <label style={s.sectionHeader}>Select Columns to Export</label>
-            <div style={s.chipRow}>
-              {ALL_EXPORT_FIELDS.map(f => (
-                <button key={f} type="button" onClick={() => setExportFields(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
-                  style={{ ...s.chip, ...(exportFields.includes(f) ? s.chipSelected : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {exportFields.includes(f) ? <CheckIcon size={13} color="#3B82F6" /> : <PlusIcon size={13} color="currentColor" />}
-                  <span>{f}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button onClick={exportExcel} style={{ ...s.primaryBtn, width: '100%', marginTop: 28 }}>
-            <FileSpreadsheetIcon size={18} /> Generate & Download Excel
-          </button>
-        </div>
-      )}
 
       {/* ── FACULTY COORDINATORS TAB ── */}
       {tab === 'faculty' && (
@@ -1426,7 +1368,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
               <button
                 onClick={() => {
-                  setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+                  setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
                   setFacultyDeptId('');
                   setIsFacultyModalOpen(true);
                 }}
@@ -1545,7 +1487,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
                         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            Class: <strong style={{ color: 'var(--text-primary)' }}>{classLabel}</strong>
+                            Branch / Dept: <strong style={{ color: 'var(--text-primary)' }}>{getDeptInfo(f.department_id) || classLabel}</strong>
                           </span>
                           <button
                             type="button"
@@ -1579,7 +1521,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                 <button
                   type="button"
                   onClick={() => {
-                    setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+                    setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
                     setFacultyDeptId('');
                     setIsFacultyModalOpen(true);
                   }}
@@ -1679,40 +1621,17 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                 <label style={s.label}>Password * <input required type="password" style={s.input} value={facultyForm.password} onChange={e => setFacultyForm({ ...facultyForm, password: e.target.value })} placeholder="Set Password" /></label>
                 <label style={s.label}>Phone Number <input style={s.input} value={facultyForm.phone} onChange={e => setFacultyForm({ ...facultyForm, phone: e.target.value })} placeholder="+91 9876543210" /></label>
                 <label style={s.label}>
-                  Department *
+                  Department / Branch *
                   <select
                     required
                     style={s.input}
                     value={facultyDeptId}
-                    onChange={e => {
-                      setFacultyDeptId(e.target.value);
-                      setFacultyForm({ ...facultyForm, class_id: '' });
-                    }}
+                    onChange={e => setFacultyDeptId(e.target.value)}
                   >
-                    <option value="">-- Select Department --</option>
+                    <option value="">-- Select Department / Branch --</option>
                     {hierarchy.flatMap((p: any) => p.departments || []).map((d: any) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ ...s.label, opacity: facultyDeptId ? 1 : 0.6 }}>
-                  Assigned Class *
-                  <select
-                    required
-                    disabled={!facultyDeptId}
-                    style={s.input}
-                    value={facultyForm.class_id}
-                    onChange={e => setFacultyForm({ ...facultyForm, class_id: e.target.value })}
-                  >
-                    <option value="">
-                      {facultyDeptId ? '-- Select Class --' : '-- Select Department First --'}
-                    </option>
-                    {tpoSelectedClasses.map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
                       </option>
                     ))}
                   </select>

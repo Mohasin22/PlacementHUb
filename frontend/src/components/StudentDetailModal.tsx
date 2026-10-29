@@ -21,13 +21,16 @@ import {
   UserIcon,
   UploadIcon,
   SparklesIcon,
+  GoogleDriveIcon,
 } from './Icons';
 import { StudentAvatar } from './StudentAvatar';
+import { StudentGDriveVault } from './StudentGDriveVault';
 
 interface StudentDetailModalProps {
   student: any;
   isOpen: boolean;
   onClose: () => void;
+  token?: string;
 }
 
 export function formatDocumentUrl(rawUrl?: string | null): {
@@ -258,8 +261,9 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   student,
   isOpen,
   onClose,
+  token,
 }) => {
-  const [activeTab, setActiveTab] = useState<'academics' | 'education' | 'skills' | 'contact'>('academics');
+  const [activeTab, setActiveTab] = useState<'academics' | 'education' | 'skills' | 'contact' | 'gdrive_vault'>('academics');
   const [copied, setCopied] = useState(false);
 
   // Full Screen Preview Modal State
@@ -295,7 +299,6 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   const name = student.name || student.identity?.full_name || 'Student';
   const rollNumber = student.roll_number || student.student_id || 'N/A';
   const deptName = student.department_name || student.academic_identity?.department_name || 'Department';
-  const className = student.class_name || student.academic_identity?.class_name || 'Section A';
   const batchLabel = student.batch_label || student.academic_identity?.batch_label || '2023–2027';
   const studyYearLabel = student.study_year_label || `${student.current_study_year || 4}th Year`;
   const semesterLabel = student.semester_label || `${student.current_semester || 7}th Sem`;
@@ -476,7 +479,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
                 <span style={{ opacity: 0.6 }}>•</span>
                 <span style={{ fontSize: '0.85rem', color: '#93C5FD', fontWeight: 600 }}>
-                  {deptName} ({className})
+                  {deptName}
                 </span>
                 <span style={{ opacity: 0.6 }}>•</span>
                 <span style={{ fontSize: '0.85rem', color: '#C4B5FD', fontWeight: 600 }}>
@@ -629,6 +632,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             { id: 'academics', label: 'Academics & SGPAs', icon: <AnalyticsIcon size={16} color="currentColor" /> },
             { id: 'education', label: 'Education History', icon: <GraduationCapIcon size={16} color="currentColor" /> },
             { id: 'skills', label: 'Skills & Projects', icon: <CodeIcon size={16} color="currentColor" />, highlight: resumeDoc.hasUrl || techCertsDoc.hasUrl },
+            { id: 'gdrive_vault', label: 'Google Drive PLACEMENT Vault', icon: <GoogleDriveIcon size={16} />, highlight: true },
             { id: 'contact', label: 'Personal & Contact', icon: <UserIcon size={16} color="currentColor" /> },
           ].map((t) => (
             <button
@@ -1049,9 +1053,9 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Department & Class</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Department / Branch</span>
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
-                      {deptName} - {className}
+                      {deptName}
                     </div>
                   </div>
                   <div>
@@ -1776,6 +1780,18 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* 5. GOOGLE DRIVE PLACEMENT VAULT TAB (STAFF INSPECTION) */}
+          {activeTab === 'gdrive_vault' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <StudentGDriveVault
+                token={token || JSON.parse(localStorage.getItem('auth') || '{}').token || ''}
+                studentId={student.id || student._id}
+                isStaffMode={true}
+                studentProfile={student}
+              />
             </div>
           )}
         </div>

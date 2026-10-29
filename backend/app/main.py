@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.connection import connect_to_mongo, close_mongo_connection
-from app.routes import auth, institution, student, faculty, drive, tpo, files, dean, profile, analytics, resume, academic, ai
+from app.routes import auth, institution, student, faculty, drive, tpo, files, dean, profile, analytics, resume, academic, ai, gdrive_vault
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -60,6 +60,7 @@ app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(analytics.router, prefix="/api/tpo/analytics", tags=["Analytics"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume Intelligence"])
 app.include_router(ai.router, prefix="/api/ai", tags=["AI System"])
+app.include_router(gdrive_vault.router, prefix="/api/students/gdrive-vault", tags=["Google Drive PLACEMENT Vault"])
 
 
 

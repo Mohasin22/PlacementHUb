@@ -18,16 +18,26 @@ import {
   UploadIcon,
   RefreshIcon,
   SparklesIcon,
+  GoogleDriveIcon,
 } from '../components/Icons';
+import { StudentGDriveVault } from '../components/StudentGDriveVault';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
 
 interface StudentProfileProps {
   token: string;
+  defaultTab?: 'profile' | 'gdrive_vault';
 }
 
-export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
+export const StudentProfile: React.FC<StudentProfileProps> = ({ token, defaultTab = 'profile' }) => {
   const [profile, setProfile] = useState<any>(null);
+  const [mainContainerTab, setMainContainerTab] = useState<'profile' | 'gdrive_vault'>(defaultTab);
+
+  useEffect(() => {
+    if (defaultTab) {
+      setMainContainerTab(defaultTab);
+    }
+  }, [defaultTab]);
   const [editMode, setEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [scanningResume, setScanningResume] = useState(false);
@@ -526,6 +536,97 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
         </div>
       )}
 
+      {/* ── TOP CONTAINER TAB SWITCHER: PROFILE vs GOOGLE DRIVE "PLACEMENT" VAULT ── */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          marginBottom: 24,
+          background: 'var(--bg-secondary, rgba(0,0,0,0.03))',
+          padding: 6,
+          borderRadius: 14,
+          border: '1px solid var(--border-color)',
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setMainContainerTab('profile')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '11px 22px',
+            borderRadius: 10,
+            border: 'none',
+            background: mainContainerTab === 'profile' ? '#2563EB' : 'transparent',
+            color: mainContainerTab === 'profile' ? '#FFFFFF' : 'var(--text-secondary)',
+            fontSize: '0.9rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: mainContainerTab === 'profile' ? '0 4px 12px rgba(37,99,235,0.25)' : 'none',
+          }}
+        >
+          <UserIcon size={17} color="currentColor" />
+          <span>Academic Profile & Verified Records</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainContainerTab('gdrive_vault')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '11px 22px',
+            borderRadius: 10,
+            border: 'none',
+            background: mainContainerTab === 'gdrive_vault' ? '#2563EB' : 'transparent',
+            color: mainContainerTab === 'gdrive_vault' ? '#FFFFFF' : 'var(--text-secondary)',
+            fontSize: '0.9rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: mainContainerTab === 'gdrive_vault' ? '0 4px 12px rgba(37,99,235,0.25)' : 'none',
+          }}
+        >
+          <GoogleDriveIcon size={18} />
+          <span>Google Drive "PLACEMENT" Folder & AI Verification</span>
+          {profile?.gdrive_vault?.is_connected ? (
+            <span
+              style={{
+                background: profile?.gdrive_vault?.verification_report?.overall_result === 'ALL_VERIFIED' ? '#16A34A' : '#7C3AED',
+                color: '#FFFFFF',
+                fontSize: '0.68rem',
+                padding: '2px 8px',
+                borderRadius: 10,
+                fontWeight: 800,
+              }}
+            >
+              {profile?.gdrive_vault?.verification_report?.overall_result === 'ALL_VERIFIED' ? '✓ Verified' : 'AI Active'}
+            </span>
+          ) : (
+            <span
+              style={{
+                background: 'rgba(245,158,11,0.2)',
+                color: mainContainerTab === 'gdrive_vault' ? '#FEF08A' : '#D97706',
+                fontSize: '0.68rem',
+                padding: '2px 8px',
+                borderRadius: 10,
+                fontWeight: 700,
+              }}
+            >
+              Setup Folder
+            </span>
+          )}
+        </button>
+      </div>
+
+      {mainContainerTab === 'gdrive_vault' ? (
+        <StudentGDriveVault token={token} studentProfile={profile} />
+      ) : (
+        <>
       {/* ── SECTION 0: ACADEMIC BATCH & SYSTEM-DERIVED TIMELINE ───────────── */}
       <div
         style={{
@@ -584,13 +685,6 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>STUDY YEAR & SEMESTER</div>
             <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#059669', marginTop: 2 }}>
               {profile?.derived_academic_status?.status_label || `${profile?.current_study_year ?? 4}th Year - ${profile?.current_semester ?? 7}th Sem`}
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--bg-secondary, rgba(0,0,0,0.02))', padding: '12px 14px', borderRadius: 10 }}>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600 }}>CLASS / SECTION</div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginTop: 2 }}>
-              {profile?.class_name || academicId.class_name || 'Section-A'}
             </div>
           </div>
 
@@ -1366,6 +1460,8 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
       <div style={{ marginTop: 24 }}>
         <ChangePassword token={token} />
       </div>
+      </>
+      )}
 
       {/* ── DIRECT RESUME / CERTIFICATE RE-UPLOAD MODAL ── */}
       {showDirectUploadModal && ReactDOM.createPortal(

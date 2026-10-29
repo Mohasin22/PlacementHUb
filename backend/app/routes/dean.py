@@ -171,7 +171,7 @@ async def list_staff(
 ):
     users_cursor = db.db.users.find(
         {"institution_id": institution_id, "role": {"$in": ["TPO", "Faculty"]}, "is_active": {"$ne": False}},
-        {"_id": 1, "name": 1, "email": 1, "role": 1, "phone": 1, "program_id": 1, "class_id": 1, "created_at": 1}
+        {"_id": 1, "name": 1, "email": 1, "role": 1, "phone": 1, "program_id": 1, "department_id": 1, "class_id": 1, "created_at": 1}
     )
     users = await users_cursor.to_list(length=200)
     for u in users:

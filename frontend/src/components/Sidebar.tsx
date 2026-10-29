@@ -6,9 +6,9 @@ import {
   CalendarIcon,
   UsersIcon,
   UserIcon,
-  UploadIcon,
   BuildingIcon,
-  ClassIcon
+  ClassIcon,
+  GoogleDriveIcon
 } from './Icons';
 
 interface SidebarNavProps {
@@ -38,7 +38,6 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
           { key: 'analytics', label: 'Analytics', icon: AnalyticsIcon },
           { key: 'events', label: 'Seminars & Events', icon: CalendarIcon },
           { key: 'faculty', label: 'Faculty Coordinators', icon: BuildingIcon },
-          { key: 'export', label: 'Export Data', icon: UploadIcon },
         ];
       case 'Dean':
         return [
@@ -56,6 +55,7 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
       case 'Student':
         return [
           { key: 'profile', label: 'Academic Profile', icon: UserIcon },
+          { key: 'drive_vault', label: 'PLACEMENT Drive Vault', icon: GoogleDriveIcon },
           { key: 'drives', label: 'Eligible Drives', icon: DrivesIcon },
           { key: 'events', label: 'Targeted Seminars', icon: CalendarIcon },
         ];
@@ -72,27 +72,39 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
   };
 
   return (
-    <aside
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <div
       style={{
         width: isHovered ? 240 : 72,
-        background: '#0B192C',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: isHovered ? '20px 16px' : '20px 10px',
-        minHeight: '100vh',
-        position: 'sticky',
-        top: 0,
-        zIndex: 40,
         flexShrink: 0,
-        color: '#FFFFFF',
-        transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        overflow: 'hidden',
-        boxShadow: isHovered ? '4px 0 24px rgba(0, 0, 0, 0.25)' : 'none',
+        transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: 'relative',
+        zIndex: 50,
       }}
     >
+      <aside
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{
+          width: isHovered ? 240 : 72,
+          background: '#0B192C',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: isHovered ? '20px 16px' : '20px 10px',
+          height: '100vh',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 50,
+          flexShrink: 0,
+          color: '#FFFFFF',
+          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          boxShadow: isHovered ? '4px 0 24px rgba(0, 0, 0, 0.25)' : 'none',
+        }}
+      >
       <div>
         {/* Top Sidebar Header: Logo & College Name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -241,5 +253,6 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
         )}
       </div>
     </aside>
+    </div>
   );
 };

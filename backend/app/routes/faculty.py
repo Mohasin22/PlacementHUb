@@ -77,21 +77,39 @@ class FacultyRegisterPayload(BaseModel):
     email: EmailStr
     password: str
     phone: Optional[str] = None
-    class_id: str
+    department_id: Optional[str] = None
+    class_id: Optional[str] = None
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RoleChecker(["TPO", "Dean"]))])
 async def register_faculty(payload: FacultyRegisterPayload, current_user: dict = Depends(get_current_user), institution_id: str = Depends(get_tenant_id)):
-    cls = await db.db.classes.find_one(id_query(payload.class_id))
-    if not cls:
-        raise HTTPException(status_code=404, detail="Class not found under this institution.")
-        
-    if current_user.get("role") == "TPO":
-        tpo_user = await db.db.users.find_one(id_query(current_user["user_id"]))
-        if tpo_user and tpo_user.get("program_id"):
-            tpo_prog_id = str(tpo_user["program_id"])
-            cls_prog_id = str(cls.get("program_id") or "")
-            if cls_prog_id and tpo_prog_id != cls_prog_id:
-                raise HTTPException(status_code=403, detail="TPOs can only appoint Faculty Coordinators for their own assigned program.")
+    dept_id = payload.department_id
+    cls_id = payload.class_id
+
+    if dept_id:
+        dept = await db.db.departments.find_one(id_query(dept_id))
+        if not dept:
+            raise HTTPException(status_code=404, detail="Department not found under this institution.")
+        if current_user.get("role") == "TPO":
+            tpo_user = await db.db.users.find_one(id_query(current_user["user_id"]))
+            if tpo_user and tpo_user.get("program_id"):
+                tpo_prog_id = str(tpo_user["program_id"])
+                dept_prog_id = str(dept.get("program_id") or "")
+                if dept_prog_id and tpo_prog_id != dept_prog_id:
+                    raise HTTPException(status_code=403, detail="TPOs can only appoint Faculty Coordinators for their own assigned program.")
+    elif cls_id:
+        cls = await db.db.classes.find_one(id_query(cls_id))
+        if not cls:
+            raise HTTPException(status_code=404, detail="Class not found under this institution.")
+        dept_id = str(cls.get("department_id") or "")
+        if current_user.get("role") == "TPO":
+            tpo_user = await db.db.users.find_one(id_query(current_user["user_id"]))
+            if tpo_user and tpo_user.get("program_id"):
+                tpo_prog_id = str(tpo_user["program_id"])
+                cls_prog_id = str(cls.get("program_id") or "")
+                if cls_prog_id and tpo_prog_id != cls_prog_id:
+                    raise HTTPException(status_code=403, detail="TPOs can only appoint Faculty Coordinators for their own assigned program.")
+    else:
+        raise HTTPException(status_code=400, detail="Please select a Department / Branch for the Faculty Coordinator.")
 
     email_check = payload.email.strip().lower()
     existing_user = await db.db.users.find_one({"email": email_check})
@@ -104,8 +122,8 @@ async def register_faculty(payload: FacultyRegisterPayload, current_user: dict =
         "password_hash": hash_password(payload.password),
         "phone": payload.phone.strip() if payload.phone else None,
         "role": "Faculty",
-        "class_id": payload.class_id,
-        "department_id": str(cls.get("department_id") or ""),
+        "department_id": dept_id,
+        "class_id": cls_id,
         "institution_id": institution_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -113,11 +131,16 @@ async def register_faculty(payload: FacultyRegisterPayload, current_user: dict =
     res = await db.db.users.insert_one(faculty_doc)
     faculty_id_str = str(res.inserted_id)
 
-    # Link class to this faculty coordinator
-    await db.db.classes.update_one(
-        id_query(payload.class_id),
-        {"$set": {"faculty_coordinator_id": faculty_id_str}}
-    )
+    if dept_id:
+        await db.db.departments.update_one(
+            id_query(dept_id),
+            {"$set": {"faculty_coordinator_id": faculty_id_str}}
+        )
+    if cls_id:
+        await db.db.classes.update_one(
+            id_query(cls_id),
+            {"$set": {"faculty_coordinator_id": faculty_id_str}}
+        )
 
     return {"message": "Faculty Coordinator registered successfully.", "faculty_id": faculty_id_str}
 

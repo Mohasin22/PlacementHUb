@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Login } from './pages/Login';
 import { Onboarding } from './pages/Onboarding';
 import { DeanDashboard } from './pages/DeanDashboard';
@@ -410,7 +410,8 @@ export default function App() {
                 )}
                 {auth.role === 'Student' && (
                   <div className="animate-fade-in">
-                    {currentTab === 'profile' && <StudentProfile token={auth.token} />}
+                    {currentTab === 'profile' && <StudentProfile token={auth.token} defaultTab="profile" />}
+                    {currentTab === 'drive_vault' && <StudentProfile token={auth.token} defaultTab="gdrive_vault" />}
                     {currentTab === 'drives' && <StudentDrives token={auth.token} activeTab="drives" />}
                     {currentTab === 'events' && <StudentDrives token={auth.token} activeTab="events" />}
                   </div>
@@ -437,8 +438,3 @@ export default function App() {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  switchViewLink: { marginTop: 24, color: 'var(--text-secondary)', fontSize: '0.95rem', fontWeight: 500, textAlign: 'center' },
-  linkButton: { background: 'none', border: 'none', color: '#4F46E5', fontWeight: 600, cursor: 'pointer', marginLeft: 4 },
-};

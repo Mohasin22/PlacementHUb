@@ -75,7 +75,19 @@ export const DeanDashboard: React.FC<DeanDashboardProps> = ({ token, institution
     return found ? found.name : null;
   };
 
-  const getClassInfo = (classId?: string) => {
+  const getDeptInfo = (deptId?: string) => {
+    if (!deptId) return null;
+    for (const prog of hierarchy) {
+      for (const dept of prog.departments || []) {
+        if (dept.id === deptId) {
+          return `${prog.name} → ${dept.name}`;
+        }
+      }
+    }
+    return null;
+  };
+
+  const getClassInfo = (classId: string) => {
     if (!classId) return null;
     for (const prog of hierarchy) {
       for (const dept of prog.departments || []) {
@@ -89,17 +101,6 @@ export const DeanDashboard: React.FC<DeanDashboardProps> = ({ token, institution
     return null;
   };
 
-  const selectedDeptClasses = (() => {
-    if (!staffForm.department_id) return [];
-    for (const p of hierarchy) {
-      for (const d of p.departments || []) {
-        if (d.id === staffForm.department_id) {
-          return d.classes || [];
-        }
-      }
-    }
-    return [];
-  })();
 
   const filteredStaff = staff.filter(u => {
     const q = staffSearch.toLowerCase();
@@ -129,7 +130,7 @@ export const DeanDashboard: React.FC<DeanDashboardProps> = ({ token, institution
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Failed to appoint TPO');
       } else {
-        if (!staffForm.class_id) throw new Error('Please select a class for the Faculty Coordinator.');
+        if (!staffForm.department_id) throw new Error('Please select a department / branch for the Faculty Coordinator.');
         const res = await fetch(`${API}/faculty/register`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
@@ -138,7 +139,7 @@ export const DeanDashboard: React.FC<DeanDashboardProps> = ({ token, institution
             email: staffForm.email,
             password: staffForm.password,
             phone: staffForm.phone || null,
-            class_id: staffForm.class_id
+            department_id: staffForm.department_id
           })
         });
         const data = await res.json();
@@ -365,7 +366,7 @@ export const DeanDashboard: React.FC<DeanDashboardProps> = ({ token, institution
                                 <span>Program: <strong>{progName || 'All Programs'}</strong></span>
                               )}
                               {u.role === 'Faculty' && (
-                                <span>Class: <strong>{classInfo || 'Assigned Class'}</strong></span>
+                                <span>Branch / Dept: <strong>{getDeptInfo(u.department_id) || classInfo || 'Assigned Department'}</strong></span>
                               )}
                             </div>
                             <button
@@ -518,47 +519,25 @@ export const DeanDashboard: React.FC<DeanDashboardProps> = ({ token, institution
                   </select>
                 </div>
               ) : (
-                <div className="space-y-md">
-                  <div>
-                    <label className="text-xs font-semibold text-on-surface-variant block mb-1">Department *</label>
-                    <select
-                      required
-                      value={staffForm.department_id}
-                      onChange={e => setStaffForm({ ...staffForm, department_id: e.target.value, class_id: '' })}
-                      className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-sm text-body-sm outline-none focus:border-primary"
-                    >
-                      <option value="">-- Select Department --</option>
-                      {hierarchy.map(p => (
-                        <optgroup key={p.id} label={`Program: ${p.name}`}>
-                          {p.departments?.map((d: any) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-on-surface-variant block mb-1">Assigned Class *</label>
-                    <select
-                      required
-                      disabled={!staffForm.department_id}
-                      value={staffForm.class_id}
-                      onChange={e => setStaffForm({ ...staffForm, class_id: e.target.value })}
-                      className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-sm text-body-sm outline-none focus:border-primary disabled:opacity-50"
-                    >
-                      <option value="">
-                        {staffForm.department_id ? '-- Select Class --' : '-- Select Department First --'}
-                      </option>
-                      {selectedDeptClasses.map((c: any) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="text-xs font-semibold text-on-surface-variant block mb-1">Department / Branch *</label>
+                  <select
+                    required
+                    value={staffForm.department_id}
+                    onChange={e => setStaffForm({ ...staffForm, department_id: e.target.value })}
+                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-sm text-body-sm outline-none focus:border-primary"
+                  >
+                    <option value="">-- Select Department / Branch --</option>
+                    {hierarchy.map(p => (
+                      <optgroup key={p.id} label={`Program: ${p.name}`}>
+                        {p.departments?.map((d: any) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
                 </div>
               )}
 
