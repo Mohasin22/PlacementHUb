@@ -1,3 +1,4 @@
+import { getSafeUrl } from '../utils/safeUrl';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   FolderIcon,
@@ -1058,7 +1059,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {vault?.folder_url && (
               <a
-                href={vault.folder_url}
+                href={getSafeUrl(vault.folder_url) || "#"}
                 target="_blank"
                 rel="noreferrer"
                 style={{
@@ -1257,7 +1258,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                     </button>
                     {file.drive_url && (
                       <a
-                        href={file.drive_url}
+                        href={getSafeUrl(file.drive_url) || "#"}
                         target="_blank"
                         rel="noreferrer"
                         style={{
@@ -1673,7 +1674,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
             >
               {previewFile.drive_url && (
                 <a
-                  href={previewFile.drive_url}
+                  href={getSafeUrl(previewFile.drive_url) || "#"}
                   target="_blank"
                   rel="noreferrer"
                   style={{

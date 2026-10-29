@@ -1,4 +1,5 @@
 import io
+import asyncio
 import re
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
@@ -342,39 +343,38 @@ async def process_excel_import(
     await ensure_default_board_rules()
     await ensure_default_academic_calendar(institution_id)
 
-    # Load workbook using openpyxl with pandas fallback
-    header_row = []
-    rows = []
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-        if "Student_Master_Upload" in wb.sheetnames:
-            ws = wb["Student_Master_Upload"]
-        else:
-            ws = wb.active
-            
-        data = list(ws.iter_rows(values_only=True))
-        if not data or len(data) < 2:
-            return {"success": False, "error": "Excel workbook is empty or contains no data rows."}
-            
-        header_row = [clean_cell_str(c) for c in data[0]]
-        rows = data[1:]
-    except Exception as e:
-        # Fallback to pandas read_excel / read_csv
+    def _parse_excel_bytes_sync(raw_bytes: bytes) -> Dict[str, Any]:
         try:
-            df = pd.read_excel(io.BytesIO(file_bytes))
-            if df.empty:
-                return {"success": False, "error": "Spreadsheet contains no data rows."}
-            header_row = [clean_cell_str(c) for c in df.columns]
-            rows = [tuple(r) for r in df.values]
-        except Exception:
+            wb = openpyxl.load_workbook(io.BytesIO(raw_bytes), data_only=True)
+            if "Student_Master_Upload" in wb.sheetnames:
+                ws = wb["Student_Master_Upload"]
+            else:
+                ws = wb.active
+            data = list(ws.iter_rows(values_only=True))
+            if not data or len(data) < 2:
+                return {"error": "Excel workbook is empty or contains no data rows."}
+            h_row = [clean_cell_str(c) for c in data[0]]
+            return {"header_row": h_row, "rows": data[1:]}
+        except Exception as e:
             try:
-                df = pd.read_csv(io.BytesIO(file_bytes))
+                df = pd.read_excel(io.BytesIO(raw_bytes))
                 if df.empty:
-                    return {"success": False, "error": "CSV file contains no data rows."}
-                header_row = [clean_cell_str(c) for c in df.columns]
-                rows = [tuple(r) for r in df.values]
-            except Exception as e_inner:
-                return {"success": False, "error": f"Failed to parse Excel file: {str(e)}"}
+                    return {"error": "Spreadsheet contains no data rows."}
+                return {"header_row": [clean_cell_str(c) for c in df.columns], "rows": [tuple(r) for r in df.values]}
+            except Exception:
+                try:
+                    df = pd.read_csv(io.BytesIO(raw_bytes))
+                    if df.empty:
+                        return {"error": "CSV file contains no data rows."}
+                    return {"header_row": [clean_cell_str(c) for c in df.columns], "rows": [tuple(r) for r in df.values]}
+                except Exception:
+                    return {"error": f"Failed to parse Excel file: {str(e)}"}
+
+    parsed_result = await asyncio.to_thread(_parse_excel_bytes_sync, file_bytes)
+    if "error" in parsed_result:
+        return {"success": False, "error": parsed_result["error"]}
+    header_row = parsed_result["header_row"]
+    rows = parsed_result["rows"]
 
     # Load existing hierarchy from MongoDB
     all_programs = await db.db.programs.find({"$or": [{"institution_id": institution_id}, {"institution_id": parse_id(institution_id)}]}).to_list(length=200)

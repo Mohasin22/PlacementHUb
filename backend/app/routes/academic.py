@@ -126,7 +126,7 @@ async def activate_academic_calendar(
     institution_id: str = Depends(get_tenant_id)
 ):
     await db.db.academic_calendars.update_many({"institution_id": institution_id}, {"$set": {"active": False}})
-    res = await db.db.academic_calendars.update_one(id_query(calendar_id), {"$set": {"active": True}})
+    res = await db.db.academic_calendars.update_one(id_query(calendar_id, {"institution_id": institution_id}), {"$set": {"active": True}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Academic calendar not found.")
 
@@ -149,7 +149,7 @@ async def update_program_structure(
     if payload.code:
         update_data["code"] = payload.code.strip()
 
-    res = await db.db.programs.update_one(id_query(program_id), {"$set": update_data})
+    res = await db.db.programs.update_one(id_query(program_id, {"institution_id": institution_id}), {"$set": update_data})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Program not found.")
 
@@ -229,8 +229,8 @@ async def set_academic_status_override(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
-    """Allows authorized admin to set study year or semester override (e.g. for year gaps or repeating semester)."""
-    student = await db.db.students.find_one(id_query(student_id))
+    """Allows authorized admin to set study year or semester override with tenant check."""
+    student = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not student:
         raise HTTPException(status_code=404, detail="Student not found.")
 
@@ -273,7 +273,7 @@ async def clear_academic_status_override(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
-    student = await db.db.students.find_one(id_query(student_id))
+    student = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not student:
         raise HTTPException(status_code=404, detail="Student not found.")
 

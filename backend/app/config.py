@@ -27,6 +27,16 @@ class Settings:
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
     BACKEND_PUBLIC_URL: str = os.getenv("BACKEND_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
 
+    # CORS Allowed Origins (Avoid wildcard with credentials)
+    CORS_ORIGINS: list = [
+        origin.strip()
+        for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000").split(",")
+        if origin.strip()
+    ]
+
+    # Webhook Shared Secret
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "")
+
     # Professional Account Verification: GitHub OAuth
     GITHUB_CLIENT_ID: str = os.getenv("GITHUB_CLIENT_ID", "")
     GITHUB_CLIENT_SECRET: str = os.getenv("GITHUB_CLIENT_SECRET", "")
@@ -44,4 +54,3 @@ class Settings:
     )
 
 settings = Settings()
-

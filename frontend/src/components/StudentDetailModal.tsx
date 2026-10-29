@@ -1,3 +1,4 @@
+import { getSafeUrl } from '../utils/safeUrl';
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -1706,7 +1707,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   {links.linkedin ? (
                     <a
-                      href={links.linkedin}
+                      href={getSafeUrl(links.linkedin) || "#"}
                       target="_blank"
                       rel="noreferrer"
                       style={{
@@ -1729,7 +1730,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
                   {links.github ? (
                     <a
-                      href={links.github}
+                      href={getSafeUrl(links.github) || "#"}
                       target="_blank"
                       rel="noreferrer"
                       style={{
@@ -1752,7 +1753,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
                   {links.portfolio ? (
                     <a
-                      href={links.portfolio}
+                      href={getSafeUrl(links.portfolio) || "#"}
                       target="_blank"
                       rel="noreferrer"
                       style={{

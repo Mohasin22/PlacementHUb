@@ -157,6 +157,9 @@ async def get_student_gdrive_vault(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
+    st = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
+    if not st:
+        raise HTTPException(status_code=404, detail="Student not found under this institution.")
     vault = await GDriveVaultService.get_or_initialize_vault(student_id)
     return vault
 
@@ -166,6 +169,9 @@ async def staff_run_ai_verification(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
+    st = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
+    if not st:
+        raise HTTPException(status_code=404, detail="Student not found under this institution.")
     try:
         vault = await GDriveVaultService.verify_vault_with_ai(
             student_id=student_id,
@@ -187,6 +193,9 @@ async def staff_update_checklist_item(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
+    st = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
+    if not st:
+        raise HTTPException(status_code=404, detail="Student not found under this institution.")
     try:
         vault = await GDriveVaultService.update_checkbox_item(
             student_id=student_id,

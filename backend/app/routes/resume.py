@@ -1,3 +1,29 @@
+import socket
+import ipaddress
+import urllib.parse
+
+def is_safe_external_url(url: str) -> bool:
+    """Blocks SSRF to private, loopback, or cloud metadata IP ranges."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        # Disallow localhost / 127.0.0.1 directly
+        if host.lower() in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "169.254.169.254"):
+            return False
+        # Resolve hostname IPs
+        _, _, ip_list = socket.gethostbyname_ex(host)
+        for ip_str in ip_list:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
+    except Exception:
+        return False
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -5,7 +31,7 @@ from datetime import datetime, timezone
 import uuid
 import os
 import re
-import urllib.request
+import httpx
 
 from app.db.tenant import get_current_user, get_tenant_id, RoleChecker
 from app.db.connection import db
@@ -73,8 +99,8 @@ async def scan_existing_resume(
             with open(candidate_path, "rb") as f:
                 file_bytes = f.read()
 
-    # 2. If not found locally, attempt direct fetch if it's an HTTP/HTTPS URL
-    if not file_bytes and (resume_url.startswith("http://") or resume_url.startswith("https://")):
+    # 2. If not found locally, attempt direct fetch if it's a verified safe external HTTP/HTTPS URL (SSRF protected)
+    if not file_bytes and (resume_url.startswith("http://") or resume_url.startswith("https://")) and is_safe_external_url(resume_url):
         try:
             fetch_url = resume_url
             drive_match = re.search(r"(?:/d/|id=)([a-zA-Z0-9_-]{25,})", resume_url)
@@ -82,17 +108,18 @@ async def scan_existing_resume(
                 drive_id = drive_match.group(1)
                 fetch_url = f"https://drive.google.com/uc?export=download&id={drive_id}"
 
-            req = urllib.request.Request(
-                fetch_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            )
-            with urllib.request.urlopen(req, timeout=12) as response:
-                downloaded = response.read()
-                # Check for Google Drive auth/consent HTML
-                if b"<html" in downloaded[:200].lower() and b"google" in downloaded[:200].lower():
-                    pass
-                elif len(downloaded) > 200:
-                    file_bytes = downloaded
+            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+                response = await client.get(
+                    fetch_url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                )
+                if response.status_code == 200:
+                    downloaded = response.content
+                    # Check for Google Drive auth/consent HTML
+                    if b"<html" in downloaded[:200].lower() and b"google" in downloaded[:200].lower():
+                        pass
+                    elif len(downloaded) > 200:
+                        file_bytes = downloaded
         except Exception:
             pass
 

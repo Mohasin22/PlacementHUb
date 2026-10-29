@@ -151,10 +151,11 @@ async def match_student_to_drive(
     identifies board conversions, categorizes mandatory vs preferred criteria,
     and returns explainable AI assessment.
     """
-    # If student role, ensure they are requesting their own profile
-    if current_user.get("role") == "Student" and current_user.get("user_id") != student_id:
-        # Check if student_id matches roll number or id
-        pass  # tenant checks in service handles this safely
+    # Enforce student identity verification to prevent IDOR
+    if current_user.get("role") == "Student":
+        curr_id = str(current_user.get("user_id"))
+        if curr_id != student_id and parse_id(curr_id) != parse_id(student_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students can only assess their own matching criteria.")
 
     return await AIStudentMatchService.get_match_assessment(
         student_id=student_id,
@@ -170,6 +171,9 @@ async def approve_student_match(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
+    curr_id = str(current_user.get("user_id"))
+    if curr_id != student_id and parse_id(curr_id) != parse_id(student_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students can only approve match records for their own profile.")
     """
     Student explicitly confirms and approves the AI assessment prior to applying.
     """
@@ -199,6 +203,10 @@ async def accept_student_data_correction(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
+    if current_user.get("role") == "Student":
+        curr_id = str(current_user.get("user_id"))
+        if curr_id != student_id and parse_id(curr_id) != parse_id(student_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students can only accept corrections for their own profile.")
     """
     HUMAN APPROVAL GATE:
     Accepts suggested data correction (e.g. skill typo fix), validates,

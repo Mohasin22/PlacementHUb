@@ -181,7 +181,7 @@ async def update_drive(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    res = await db.db.placement_drives.update_one(id_query(drive_id), {"$set": update_doc})
+    res = await db.db.placement_drives.update_one(id_query(drive_id, {"institution_id": institution_id}), {"$set": update_doc})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Drive not found")
         
@@ -189,7 +189,7 @@ async def update_drive(
 
 @router.delete("/{drive_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(RoleChecker(["TPO"]))])
 async def delete_drive(drive_id: str, current_user: dict = Depends(get_current_user), institution_id: str = Depends(get_tenant_id)):
-    res = await db.db.placement_drives.delete_one(id_query(drive_id))
+    res = await db.db.placement_drives.delete_one(id_query(drive_id, {"institution_id": institution_id}))
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Drive not found")
         
@@ -214,16 +214,16 @@ async def get_student_drive_feed(
     drives_cursor = db.db.placement_drives.find({"institution_id": institution_id})
     all_drives = await drives_cursor.to_list(length=200)
     
+    # Pre-fetch all applications for this student in a single batch query (N+1 eliminated)
+    apps_cursor = db.db.applications.find({"student_id": student_id, "institution_id": institution_id})
+    apps_list = await apps_cursor.to_list(length=len(all_drives) + 50)
+    apps_map = {str(a["drive_id"]): a for a in apps_list if a.get("drive_id")}
+
     drive_list = []
     for d in all_drives:
         d_id = str(d["_id"])
         is_eligible, reasons = evaluate_student_eligibility(student, d)
-        
-        # Check if already applied
-        applied = await db.db.applications.find_one({
-            "student_id": student_id,
-            "drive_id": d_id
-        })
+        applied = apps_map.get(d_id)
         
         if is_eligible or applied:
             drive_list.append({
@@ -415,9 +415,16 @@ async def track_applications(
     apps_cursor = db.db.applications.find({"student_id": student_id, "institution_id": institution_id})
     apps = await apps_cursor.to_list(length=100)
     
+    # Batch load all drives in 1 query (N+1 eliminated)
+    raw_drive_ids = [app.get("drive_id") for app in apps if app.get("drive_id")]
+    parsed_ids = [parse_id(did) for did in raw_drive_ids] + raw_drive_ids
+    drives_cursor = db.db.placement_drives.find({"_id": {"$in": parsed_ids}})
+    drives_list = await drives_cursor.to_list(length=len(raw_drive_ids) + 10)
+    drive_map = {str(d["_id"]): d for d in drives_list}
+
     track_list = []
     for app in apps:
-        drive = await db.db.placement_drives.find_one(id_query(app["drive_id"]))
+        drive = drive_map.get(str(app.get("drive_id")))
         if drive:
             track_list.append({
                 "application_id": str(app["_id"]),

@@ -29,7 +29,10 @@ from unittest.mock import patch, MagicMock
 
 def run(coro):
     """Helper to run async coroutines synchronously in pytest."""
-    return asyncio.run(coro)
+    async def _runner():
+        await connect_to_mongo()
+        return await coro
+    return asyncio.run(_runner())
 
 
 @pytest.fixture(autouse=True)

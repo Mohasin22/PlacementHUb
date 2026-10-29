@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from app.services.security import hash_password
 from app.services.audit import log_audit_event
-from app.db.utils import id_query, parse_id
-from app.services.official_result_service import OfficialResultService
+from app.db.utils import id_query, parse_id, sanitize_student_record
+from app.services.official_result_service import OfficialResultService, compare_with_official
 from app.services.student_validation_service import StudentValidationService
 
 router = APIRouter()
@@ -224,7 +224,7 @@ async def get_pending_faculty_students(
     for st in students:
         st["id"] = str(st["_id"])
         del st["_id"]
-        result.append(st)
+        result.append(sanitize_student_record(st))
 
     return {
         "faculty_scope": scope,
@@ -237,7 +237,7 @@ async def approve_student_canonical(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
-    student = await db.db.students.find_one(id_query(student_id))
+    student = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found.")
 
@@ -273,7 +273,7 @@ async def reject_student_canonical(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
-    student = await db.db.students.find_one(id_query(student_id))
+    student = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found.")
 
@@ -308,7 +308,7 @@ async def request_changes_student_canonical(
     institution_id: str = Depends(get_tenant_id)
 ):
     reason = payload.reason if payload and payload.reason else (feedback or "Please correct submitted information.")
-    student = await db.db.students.find_one(id_query(student_id))
+    student = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found.")
 
@@ -370,14 +370,24 @@ async def get_pending_reviews(
         if not any(s["id"] == c_id for s in submissions):
             c_sub["id"] = c_id
             del c_sub["_id"]
-            submissions.append(c_sub)
+            submissions.append(sanitize_student_record(c_sub))
 
-    # 2. Enrich submissions with validation report and official comparison
-    off_svc = OfficialResultService()
+    # 2. Batch fetch official results in a single indexed query (N+1 query elimination)
+    rolls = [
+        str(sub.get("roll_number") or sub.get("student_id") or sub.get("academic_identity", {}).get("roll_number") or "").strip().upper()
+        for sub in submissions
+    ]
+    clean_rolls = [r for r in rolls if r]
+    official_map = {}
+    if clean_rolls:
+        off_cursor = db.db.official_results.find({"institution_id": institution_id, "roll_number": {"$in": clean_rolls}})
+        off_records = await off_cursor.to_list(length=len(clean_rolls) + 50)
+        official_map = {str(r.get("roll_number", "")).strip().upper(): r for r in off_records}
+
     for sub in submissions:
-        sub_id = sub.get("id") or str(sub.get("_id", ""))
+        sub_roll = str(sub.get("roll_number") or sub.get("student_id") or sub.get("academic_identity", {}).get("roll_number") or "").strip().upper()
         sub["validation_report"] = StudentValidationService.validate_student(sub)
-        sub["official_comparison"] = await off_svc.compare_student_with_official(institution_id, sub_id)
+        sub["official_comparison"] = compare_with_official(sub, official_map.get(sub_roll))
 
     # 3. Fetch pending profile updates
     updates_cursor = db.db.student_pending_updates.find({
@@ -545,8 +555,7 @@ async def get_students(
     for std in students:
         std["id"] = str(std["_id"])
         del std["_id"]
-        if "password_hash" in std:
-            del std["password_hash"]
+        sanitize_student_record(std)
         
         derived = await get_student_academic_status(std, current_date=now_utc, institute_id=institution_id)
         std["derived_academic_status"] = derived

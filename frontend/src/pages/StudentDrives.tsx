@@ -1,3 +1,4 @@
+import { getSafeUrl } from '../utils/safeUrl';
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -441,7 +442,7 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab, 
                     ) : (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {d.external_apply_link && (
-                          <a href={d.external_apply_link} target="_blank" rel="noreferrer" style={styles.extLink}>
+                          <a href={getSafeUrl(d.external_apply_link) || "#"} target="_blank" rel="noreferrer" style={styles.extLink}>
                             External Link
                           </a>
                         )}

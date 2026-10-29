@@ -5,7 +5,7 @@ from app.db.connection import db
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-from app.db.utils import id_query, parse_id
+from app.db.utils import id_query, parse_id, sanitize_student_record
 from app.services.audit import log_audit_event
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -240,10 +240,22 @@ async def get_tpo_students(
     students = await students_cursor.to_list(length=2000)
     
     now_utc = datetime.now(timezone.utc)
+    # Pre-cache academic calendar and programs to eliminate N+1 DB queries inside student loop
+    cached_cal = await db.db.academic_calendars.find_one({"institution_id": institution_id, "active": True})
+    progs_cursor = db.db.programs.find({"institution_id": institution_id})
+    progs_list = await progs_cursor.to_list(length=100)
+    cached_progs = {str(p.get("id") or p["_id"]): p for p in progs_list}
+
     result = []
     for st in students:
-        # Calculate derived status
-        derived = await get_student_academic_status(st, current_date=now_utc, institute_id=institution_id)
+        # Calculate derived status using pre-cached calendar and programs
+        derived = await get_student_academic_status(
+            st,
+            current_date=now_utc,
+            institute_id=institution_id,
+            cached_calendar=cached_cal,
+            cached_programs=cached_progs
+        )
         
         # Filter by study year if requested
         if study_year is not None and derived["current_study_year"] != study_year:
@@ -313,8 +325,8 @@ async def get_tpo_student_detail(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id),
 ):
-    """Retrieve full profile details of an individual student for TPO."""
-    st = await db.db.students.find_one(id_query(student_id))
+    """Retrieve full profile details of an individual student for TPO with tenant isolation."""
+    st = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not st:
         raise HTTPException(status_code=404, detail="Student not found.")
         
@@ -380,9 +392,28 @@ async def get_drive_applications(
     apps_cursor = db.db.applications.find({"drive_id": drive_id, "institution_id": institution_id}).sort("applied_at", -1)
     apps = await apps_cursor.to_list(length=1000)
     
+    student_ids = [str(a["student_id"]) for a in apps if "student_id" in a]
+    parsed_ids = [parse_id(sid) for sid in student_ids]
+    students_cursor = db.db.students.find({
+        "": [
+            {"_id": {"": parsed_ids}},
+            {"id": {"": student_ids}},
+            {"student_id": {"": student_ids}}
+        ]
+    })
+    students_list = await students_cursor.to_list(length=max(1, len(student_ids) + 10))
+    students_by_id = {}
+    for st in students_list:
+        sanitize_student_record(st)
+        students_by_id[str(st.get("_id", ""))] = st
+        if "id" in st:
+            students_by_id[str(st["id"])] = st
+        if "student_id" in st:
+            students_by_id[str(st["student_id"])] = st
+
     app_details = []
     for app in apps:
-        student = await db.db.students.find_one(id_query(app["student_id"]))
+        student = students_by_id.get(str(app["student_id"]))
         # Use snapshot data if present, otherwise fall back to live profile
         p_snap = app.get("profile_snapshot") or {}
         a_snap = app.get("academic_snapshot") or {}

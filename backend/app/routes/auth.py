@@ -225,7 +225,8 @@ async def request_otp(request: Request, payload: OTPRequest):
     return {"message": "OTP sent successfully to registered email."}
 
 @router.post("/otp/verify", response_model=TokenResponse)
-async def verify_otp(payload: OTPVerify):
+@limiter.limit("5/minute")
+async def verify_otp(request: Request, payload: OTPVerify):
     email = payload.email.strip().lower()
     otp = payload.otp.strip()
     
@@ -249,10 +250,23 @@ async def verify_otp(payload: OTPVerify):
         )
         
     if session["otp"] != otp:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OTP. Please try again."
-        )
+        failed_attempts = session.get("failed_attempts", 0) + 1
+        if failed_attempts >= 5:
+            await db.db.otp_sessions.delete_one({"_id": session["_id"]})
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Too many invalid OTP attempts. Login session invalidated. Please request a new OTP."
+            )
+        else:
+            await db.db.otp_sessions.update_one(
+                {"_id": session["_id"]},
+                {"$set": {"failed_attempts": failed_attempts}}
+            )
+            remaining = 5 - failed_attempts
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid OTP. {remaining} attempt{'s' if remaining != 1 else ''} remaining."
+            )
         
     await db.db.otp_sessions.delete_one({"_id": session["_id"]})
     
@@ -308,15 +322,19 @@ async def set_password(
     if role == "Student":
         update_doc = {
             "password_hash": hashed_password,
-            "password_plain": payload.password,
             "authentication.password_set": True,
             "authentication.password_hash": hashed_password,
-            "authentication.password_plain": payload.password,
             "authentication.account_status": "ACTIVE",
             "authentication.first_login_completed": True,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.db.students.update_one(id_query(user_id), {"$set": update_doc})
+        await db.db.students.update_one(
+            id_query(user_id),
+            {
+                "$set": update_doc,
+                "$unset": {"password_plain": "", "authentication.password_plain": ""}
+            }
+        )
     else:
         await db.db.users.update_one(
             id_query(user_id),
@@ -364,13 +382,14 @@ async def change_password(
     if role == "Student":
         await db.db.students.update_one(
             id_query(user_id),
-            {"$set": {
-                "password_hash": hashed_password,
-                "password_plain": payload.new_password,
-                "authentication.password_hash": hashed_password,
-                "authentication.password_plain": payload.new_password,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }}
+            {
+                "$set": {
+                    "password_hash": hashed_password,
+                    "authentication.password_hash": hashed_password,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                },
+                "$unset": {"password_plain": "", "authentication.password_plain": ""}
+            }
         )
     else:
         await db.db.users.update_one(
@@ -381,9 +400,12 @@ async def change_password(
     return {"message": "Password changed successfully."}
 
 @router.get("/otp/debug/{email}")
-async def get_otp_debug(email: str):
-    email = email.strip().lower()
-    session = await db.db.otp_sessions.find_one({"email": email})
+async def get_otp_debug(email: EmailStr):
+    import os
+    if os.getenv("DEBUG_MODE", "false").lower() not in ["true", "1"]:
+        raise HTTPException(status_code=403, detail="Debug endpoint disabled.")
+    email_clean = email.strip().lower()
+    session = await db.db.otp_sessions.find_one({"email": email_clean})
     if not session:
         raise HTTPException(status_code=404, detail="No OTP session found.")
     return {"otp": session["otp"]}

@@ -1,11 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
+from app.config import settings
+import secrets
 from fastapi.responses import FileResponse, StreamingResponse
 from app.db.tenant import get_current_user, get_tenant_id, RoleChecker
 from app.db.connection import db
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
-from app.db.utils import id_query, parse_id
+from app.db.utils import id_query, parse_id, sanitize_student_record
+import re
 from app.services.excel_importer import process_excel_import
 from app.services.audit import log_audit_event
 from app.services.duplicate_detection_service import DuplicateDetectionService
@@ -381,7 +384,7 @@ async def get_student_profile(
         "linkedin_verification": "VERIFIED" if linkedin_conn else "NOT_CONNECTED"
     }
     student["field_badges"] = badges
-    return student
+    return sanitize_student_record(student)
 
 @router.put("/profile/update")
 async def request_profile_update(
@@ -492,7 +495,10 @@ async def submit_academic_correction_request(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
-    student = await db.db.students.find_one(id_query(student_id))
+    curr_id = str(current_user["user_id"])
+    if curr_id != student_id and parse_id(curr_id) != parse_id(student_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: Students can only submit correction requests for their own record.")
+    student = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found.")
 
@@ -716,8 +722,13 @@ class DuplicateResolvePayload(BaseModel):
 @router.post("/webhook/gform/{institution_id}")
 async def google_forms_webhook_endpoint(
     institution_id: str,
-    payload: GFormWebhookPayload
+    payload: GFormWebhookPayload,
+    request: Request
 ):
+    if settings.WEBHOOK_SECRET:
+        secret = request.headers.get("X-Webhook-Secret") or request.query_params.get("secret")
+        if not secret or not secrets.compare_digest(secret, settings.WEBHOOK_SECRET):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing webhook signature/secret.")
     """
     Ingests Google Forms student submissions.
     Enforces Student Data Validation, Duplicate Detection, and places records
@@ -843,8 +854,8 @@ async def list_duplicate_student_records(
     for d in duplicates:
         d["id"] = str(d["_id"])
         del d["_id"]
-        existing = d.get("existing_record") or {}
-        incoming = d.get("incoming_record") or {}
+        existing = sanitize_student_record(d.get("existing_record") or {})
+        incoming = sanitize_student_record(d.get("incoming_record") or {})
         d["student_name"] = existing.get("name") or incoming.get("name") or "Unknown Student"
         d["roll_number"] = d.get("matched_roll_number") or existing.get("roll_number") or incoming.get("roll_number") or ""
         d["institute_email"] = d.get("matched_email") or existing.get("institute_email") or incoming.get("institute_email") or ""

@@ -112,7 +112,6 @@ class AuthenticationState(BaseModel):
     first_login_completed: bool = False
     password_set: bool = False
     password_hash: Optional[str] = None
-    password_plain: Optional[str] = None
     verified_institutional_email: bool = False
     verified_personal_email: bool = False
     verified_mobile: bool = False
@@ -210,8 +209,12 @@ class CanonicalStudent(BaseModel):
         doc["resume_url"] = self.documents.resume or ""
         doc["photo_url"] = self.documents.profile_photo or ""
         doc["password_hash"] = self.authentication.password_hash
-        doc["password_plain"] = self.authentication.password_plain
         doc["requires_password_setup"] = not self.authentication.password_set
+
+        # Ensure plaintext passwords are never stored
+        doc.pop("password_plain", None)
+        if "authentication" in doc and isinstance(doc["authentication"], dict):
+            doc["authentication"].pop("password_plain", None)
 
         return doc
 

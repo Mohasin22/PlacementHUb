@@ -155,19 +155,6 @@ async def download_file_compat(
     token: Optional[str] = Query(None)
 ):
     """
-    Backward-compatible download endpoint. Protects against path traversal.
+    Backward-compatible download endpoint. Enforces secure download verification and tenant isolation.
     """
-    safe_filename = os.path.basename(filename)
-    filepath = os.path.join(UPLOAD_DIR, safe_filename)
-
-    if not os.path.exists(filepath):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Requested file could not be found."
-        )
-
-    _, ext = os.path.splitext(safe_filename)
-    ext = ext.lower()
-    media_type = "application/pdf" if ext == ".pdf" else "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png" if ext == ".png" else "application/octet-stream"
-
-    return FileResponse(filepath, media_type=media_type)
+    return await secure_download_file(filename=filename, request=request, token=token)

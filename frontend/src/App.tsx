@@ -1,15 +1,26 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { Login } from './pages/Login';
-import { Onboarding } from './pages/Onboarding';
-import { DeanDashboard } from './pages/DeanDashboard';
-import { TpoDashboard } from './pages/TpoDashboard';
-import { FacultyDashboard } from './pages/FacultyDashboard';
-import { StudentProfile } from './pages/StudentProfile';
-import { StudentDrives } from './pages/StudentDrives';
-import { UserProfile } from './pages/UserProfile';
 import { Sidebar } from './components/Sidebar';
 import { NotificationsPanel } from './components/NotificationsPanel';
 import { SunIcon, MoonIcon, LogoutIcon, UserIcon } from './components/Icons';
+
+// Code-split heavy dashboard views to optimize bundle size and initial load time
+const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
+const DeanDashboard = lazy(() => import('./pages/DeanDashboard').then(m => ({ default: m.DeanDashboard })));
+const TpoDashboard = lazy(() => import('./pages/TpoDashboard').then(m => ({ default: m.TpoDashboard })));
+const FacultyDashboard = lazy(() => import('./pages/FacultyDashboard').then(m => ({ default: m.FacultyDashboard })));
+const StudentProfile = lazy(() => import('./pages/StudentProfile').then(m => ({ default: m.StudentProfile })));
+const StudentDrives = lazy(() => import('./pages/StudentDrives').then(m => ({ default: m.StudentDrives })));
+const UserProfile = lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
+
+const LoadingFallback: React.FC = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '350px', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <div style={{ width: 28, height: 28, border: '3px solid rgba(59,130,246,0.2)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Loading Portal View...</span>
+    </div>
+  </div>
+);
 
 interface AuthState {
   token: string;
@@ -142,10 +153,12 @@ export default function App() {
           />
         )}
         {view === 'onboard' && (
-          <Onboarding
-            onSuccess={() => setView('login')}
-            onBackToLogin={() => setView('login')}
-          />
+          <Suspense fallback={<LoadingFallback />}>
+            <Onboarding
+              onSuccess={() => setView('login')}
+              onBackToLogin={() => setView('login')}
+            />
+          </Suspense>
         )}
       </div>
     );
@@ -387,6 +400,7 @@ export default function App() {
         {/* Dashboard Content Area */}
         <main style={{ flex: 1, padding: '32px 40px', overflowY: 'auto' }}>
           <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+            <Suspense fallback={<LoadingFallback />}>
             {view === 'profile' ? (
               <div className="animate-fade-in">
                 <UserProfile token={auth.token} />
@@ -449,6 +463,7 @@ export default function App() {
                 )}
               </>
             )}
+            </Suspense>
           </div>
         </main>
 
