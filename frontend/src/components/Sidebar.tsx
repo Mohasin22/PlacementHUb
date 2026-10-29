@@ -8,7 +8,8 @@ import {
   UserIcon,
   BuildingIcon,
   ClassIcon,
-  GoogleDriveIcon
+  GoogleDriveIcon,
+  CheckCircleIcon
 } from './Icons';
 
 interface SidebarNavProps {
@@ -55,6 +56,7 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
       case 'Student':
         return [
           { key: 'profile', label: 'Academic Profile', icon: UserIcon },
+          { key: 'verification', label: 'Account Verification', icon: CheckCircleIcon },
           { key: 'drive_vault', label: 'PLACEMENT Drive Vault', icon: GoogleDriveIcon },
           { key: 'drives', label: 'Eligible Drives', icon: DrivesIcon },
           { key: 'events', label: 'Targeted Seminars', icon: CalendarIcon },

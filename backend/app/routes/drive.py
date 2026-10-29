@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from app.db.utils import id_query, parse_id
+from app.services.verification_service import require_professional_verification, get_student_for_user
 
 router = APIRouter()
 
@@ -199,13 +200,13 @@ async def delete_drive(drive_id: str, current_user: dict = Depends(get_current_u
 
 # ── Student Drive Feed & 1-Click Snapshot Application ─────────────────────────
 
-@router.get("/student-feed", dependencies=[Depends(RoleChecker(["Student"]))])
+@router.get("/student-feed", dependencies=[Depends(RoleChecker(["Student"])), Depends(require_professional_verification)])
 async def get_student_drive_feed(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
     student_id = current_user["user_id"]
-    student = await db.db.students.find_one(id_query(student_id))
+    student = await get_student_for_user(student_id, current_user.get("email"))
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found.")
         
@@ -242,7 +243,7 @@ async def get_student_drive_feed(
         
     return drive_list
 
-@router.get("/{drive_id}/application-preview", dependencies=[Depends(RoleChecker(["Student"]))])
+@router.get("/{drive_id}/application-preview", dependencies=[Depends(RoleChecker(["Student"])), Depends(require_professional_verification)])
 async def get_application_preview(
     drive_id: str,
     current_user: dict = Depends(get_current_user),
@@ -250,7 +251,7 @@ async def get_application_preview(
 ):
     """Returns read-only application snapshot preview before student clicks Verify & Apply."""
     student_id = current_user["user_id"]
-    student = await db.db.students.find_one(id_query(student_id))
+    student = await get_student_for_user(student_id, current_user.get("email"))
     drive = await db.db.placement_drives.find_one(id_query(drive_id))
     if not student or not drive:
         raise HTTPException(status_code=404, detail="Student or Drive not found.")
@@ -288,14 +289,14 @@ async def get_application_preview(
     }
     return preview
 
-@router.post("/{drive_id}/apply", dependencies=[Depends(RoleChecker(["Student"]))])
+@router.post("/{drive_id}/apply", dependencies=[Depends(RoleChecker(["Student"])), Depends(require_professional_verification)])
 async def apply_to_drive(
     drive_id: str,
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
     student_id = current_user["user_id"]
-    student = await db.db.students.find_one(id_query(student_id))
+    student = await get_student_for_user(student_id, current_user.get("email"))
     drive = await db.db.placement_drives.find_one(id_query(drive_id))
     
     if not student or not drive:

@@ -6,15 +6,19 @@ import {
   CheckIcon,
   AlertIcon,
   RefreshIcon,
-  SparklesIcon
+  SparklesIcon,
+  LockIcon,
+  GitHubIcon,
+  LinkedInIcon,
 } from '../components/Icons';
 import { StudentAiMatchModal } from '../components/StudentAiMatchModal';
 
-const API = 'http://localhost:8000/api';
+const API = 'http://127.0.0.1:8000/api';
 
 interface StudentDrivesProps {
   token: string;
   activeTab?: string;
+  onNavigateToVerification?: () => void;
 }
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -37,7 +41,7 @@ function getDeadlineInfo(deadline: string): { text: string; color: string; expir
   return { text: `${days} days left`, color: '#34D399', expired: false, urgent: false };
 }
 
-export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }) => {
+export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab, onNavigateToVerification }) => {
   const [drives, setDrives] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
@@ -47,6 +51,18 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [aiMatchDrive, setAiMatchDrive] = useState<any | null>(null);
+
+  // Professional Account Verification Lock State
+  const [isVerificationLocked, setIsVerificationLocked] = useState(false);
+  const [verificationData, setVerificationData] = useState<{
+    github_connected: boolean;
+    linkedin_connected: boolean;
+    missing_verifications: string[];
+  }>({
+    github_connected: false,
+    linkedin_connected: false,
+    missing_verifications: ['github', 'linkedin'],
+  });
 
   useEffect(() => {
     if (activeTab === 'events') setTab('events');
@@ -59,12 +75,39 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
     setLoading(true);
     setError(null);
     try {
-      const [feedRes, trackRes, eventsRes] = await Promise.all([
+      const [feedRes, trackRes, eventsRes, verifRes] = await Promise.all([
         fetch(`${API}/drives/student-feed`, { headers }),
         fetch(`${API}/drives/applications/track`, { headers }),
         fetch(`${API}/students/events`, { headers }),
+        fetch(`${API}/student/verification/drive-access`, { headers }),
       ]);
-      if (feedRes.ok) setDrives(await feedRes.json());
+
+      if (verifRes.ok) {
+        const v = await verifRes.json();
+        setIsVerificationLocked(!v.access_granted);
+        setVerificationData(v);
+      }
+
+      if (feedRes.status === 403) {
+        try {
+          const errData = await feedRes.json();
+          if (errData.detail?.code === 'PROFESSIONAL_VERIFICATION_REQUIRED') {
+            setIsVerificationLocked(true);
+            if (errData.detail.missing_verifications) {
+              setVerificationData((prev) => ({
+                ...prev,
+                missing_verifications: errData.detail.missing_verifications,
+                github_connected: !errData.detail.missing_verifications.includes('github'),
+                linkedin_connected: !errData.detail.missing_verifications.includes('linkedin'),
+              }));
+            }
+          }
+        } catch { }
+      } else if (feedRes.ok) {
+        setDrives(await feedRes.json());
+        setIsVerificationLocked(false);
+      }
+
       if (trackRes.ok) setApplications(await trackRes.json());
       if (eventsRes.ok) setEvents(await eventsRes.json());
     } catch {
@@ -169,9 +212,184 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
         </div>
       )}
 
-      {/* DRIVE FEED */}
+      {/* DRIVE FEED (LOCKED OR UNLOCKED) */}
       {!loading && tab === 'feed' && (
-        drives.length === 0 ? (
+        isVerificationLocked ? (
+          <div
+            style={{
+              background: 'var(--card-bg, #FFFFFF)',
+              border: '1.5px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: 20,
+              padding: '48px 32px',
+              textAlign: 'center',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.06)',
+              maxWidth: 720,
+              margin: '20px auto',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 20,
+            }}
+            className="animate-fade-in"
+          >
+            {/* Lock Badge */}
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: '50%',
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: '#DC2626',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(239, 68, 68, 0.2)',
+              }}
+            >
+              <LockIcon size={36} color="#DC2626" />
+            </div>
+
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                Placement Drives Locked
+              </h2>
+              <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: 520, lineHeight: 1.6 }}>
+                Connect and verify your GitHub and LinkedIn accounts to unlock placement opportunities.
+              </p>
+            </div>
+
+            {/* Status cards preview */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 16,
+                width: '100%',
+                maxWidth: 520,
+                marginTop: 8,
+              }}
+            >
+              {/* GitHub Card */}
+              <div
+                style={{
+                  background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
+                  border: `1.5px solid ${verificationData.github_connected ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.3)'}`,
+                  borderRadius: 12,
+                  padding: '16px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: '#24292F',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    flexShrink: 0,
+                  }}
+                >
+                  <GitHubIcon size={20} color="#fff" />
+                </div>
+                <div style={{ textAlign: 'left', flex: 1 }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>GitHub</div>
+                  <div
+                    style={{
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      color: verificationData.github_connected ? '#15803D' : '#DC2626',
+                    }}
+                  >
+                    {verificationData.github_connected ? '✓ Connected' : '✕ Not Connected'}
+                  </div>
+                </div>
+              </div>
+
+              {/* LinkedIn Card */}
+              <div
+                style={{
+                  background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
+                  border: `1.5px solid ${verificationData.linkedin_connected ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.3)'}`,
+                  borderRadius: 12,
+                  padding: '16px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: '#0A66C2',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    flexShrink: 0,
+                  }}
+                >
+                  <LinkedInIcon size={20} color="#fff" />
+                </div>
+                <div style={{ textAlign: 'left', flex: 1 }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>LinkedIn</div>
+                  <div
+                    style={{
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      color: verificationData.linkedin_connected ? '#15803D' : '#DC2626',
+                    }}
+                  >
+                    {verificationData.linkedin_connected ? '✓ Connected' : '✕ Not Connected'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Context Notice */}
+            <div style={{ fontSize: '0.85rem', color: '#B45309', background: 'rgba(245,158,11,0.1)', padding: '8px 16px', borderRadius: 8 }}>
+              {verificationData.missing_verifications.length === 2
+                ? 'Both accounts are currently unverified.'
+                : verificationData.missing_verifications.includes('github')
+                ? 'LinkedIn verified! Only GitHub verification remains.'
+                : 'GitHub verified! Only LinkedIn verification remains.'}
+            </div>
+
+            {/* Call to action */}
+            <button
+              onClick={() => {
+                if (onNavigateToVerification) {
+                  onNavigateToVerification();
+                } else {
+                  window.location.hash = 'verification';
+                }
+              }}
+              style={{
+                background: '#2563EB',
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '13px 32px',
+                borderRadius: 12,
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 4px 14px rgba(37,99,235,0.3)',
+                transition: 'transform 0.15s ease',
+              }}
+            >
+              <span>Verify Accounts →</span>
+            </button>
+          </div>
+        ) : drives.length === 0 ? (
           <div style={styles.emptyCard}>
             <DrivesIcon size={40} color="var(--text-secondary)" />
             <p style={{ margin: '12px 0 0 0', fontWeight: 600, color: 'var(--text-primary)' }}>No eligible placement drives available right now.</p>
@@ -233,18 +451,18 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
                             display: 'flex',
                             alignItems: 'center',
                             gap: 6,
-                            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                            color: '#FFF',
-                            border: 'none',
-                            padding: '8px 14px',
+                            background: '#EFF6FF',
+                            color: '#2563EB',
+                            border: '1px solid #BFDBFE',
+                            padding: '7px 12px',
                             borderRadius: 8,
-                            fontWeight: 700,
+                            fontWeight: 600,
                             fontSize: '0.82rem',
                             cursor: 'pointer',
-                            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
+                            transition: 'all 0.15s ease',
                           }}
                         >
-                          <SparklesIcon size={14} color="#FFF" /> AI Match ⚡
+                          <SparklesIcon size={14} color="#2563EB" /> AI Match ⚡
                         </button>
                         <button
                           onClick={() => openApplyPreview(d)}

@@ -23,5 +23,25 @@ class Settings:
     AI_MODEL: str = os.getenv("AI_MODEL", "gemini-1.5-flash")
     AI_API_KEY: str = os.getenv("AI_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("OPENAI_API_KEY", "")))
 
+    # URLs for OAuth Callbacks & Frontend Navigation
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    BACKEND_PUBLIC_URL: str = os.getenv("BACKEND_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
+
+    # Professional Account Verification: GitHub OAuth
+    GITHUB_CLIENT_ID: str = os.getenv("GITHUB_CLIENT_ID", "")
+    GITHUB_CLIENT_SECRET: str = os.getenv("GITHUB_CLIENT_SECRET", "")
+    GITHUB_REDIRECT_URI: str = os.getenv(
+        "GITHUB_REDIRECT_URI",
+        f"{os.getenv('BACKEND_PUBLIC_URL', 'http://127.0.0.1:8000').rstrip('/')}/api/auth/github/callback"
+    )
+
+    # Professional Account Verification: LinkedIn OAuth (OIDC)
+    LINKEDIN_CLIENT_ID: str = os.getenv("LINKEDIN_CLIENT_ID", "")
+    LINKEDIN_CLIENT_SECRET: str = os.getenv("LINKEDIN_CLIENT_SECRET", "")
+    LINKEDIN_REDIRECT_URI: str = os.getenv(
+        "LINKEDIN_REDIRECT_URI",
+        f"{os.getenv('BACKEND_PUBLIC_URL', 'http://127.0.0.1:8000').rstrip('/')}/api/auth/linkedin/callback"
+    )
+
 settings = Settings()
 

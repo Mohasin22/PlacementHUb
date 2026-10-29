@@ -410,10 +410,41 @@ export default function App() {
                 )}
                 {auth.role === 'Student' && (
                   <div className="animate-fade-in">
-                    {currentTab === 'profile' && <StudentProfile token={auth.token} defaultTab="profile" />}
-                    {currentTab === 'drive_vault' && <StudentProfile token={auth.token} defaultTab="gdrive_vault" />}
-                    {currentTab === 'drives' && <StudentDrives token={auth.token} activeTab="drives" />}
-                    {currentTab === 'events' && <StudentDrives token={auth.token} activeTab="events" />}
+                    {currentTab === 'profile' && (
+                      <StudentProfile
+                        token={auth.token}
+                        defaultTab="basic"
+                        onNavigateToDrives={() => setCurrentTab('drives')}
+                      />
+                    )}
+                    {currentTab === 'verification' && (
+                      <StudentProfile
+                        token={auth.token}
+                        defaultTab="verification"
+                        onNavigateToDrives={() => setCurrentTab('drives')}
+                      />
+                    )}
+                    {currentTab === 'drive_vault' && (
+                      <StudentProfile
+                        token={auth.token}
+                        defaultTab="gdrive_vault"
+                        onNavigateToDrives={() => setCurrentTab('drives')}
+                      />
+                    )}
+                    {currentTab === 'drives' && (
+                      <StudentDrives
+                        token={auth.token}
+                        activeTab="drives"
+                        onNavigateToVerification={() => setCurrentTab('verification')}
+                      />
+                    )}
+                    {currentTab === 'events' && (
+                      <StudentDrives
+                        token={auth.token}
+                        activeTab="events"
+                        onNavigateToVerification={() => setCurrentTab('verification')}
+                      />
+                    )}
                   </div>
                 )}
               </>

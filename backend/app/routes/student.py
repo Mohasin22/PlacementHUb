@@ -11,6 +11,7 @@ from app.services.audit import log_audit_event
 from app.services.duplicate_detection_service import DuplicateDetectionService
 from app.services.student_validation_service import StudentValidationService
 from app.services.backlog_service import BacklogService
+from app.services.verification_service import get_student_for_user, get_verification_status
 import pandas as pd
 import io
 import os
@@ -342,7 +343,7 @@ async def get_student_profile(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id)
 ):
-    student = await db.db.students.find_one(id_query(current_user["user_id"]))
+    student = await get_student_for_user(current_user["user_id"], current_user.get("email"))
     if not student:
         raise HTTPException(status_code=404, detail="Student profile not found.")
     
@@ -357,15 +358,27 @@ async def get_student_profile(
     student["current_semester"] = derived_status["current_semester"]
     student["batch_label"] = derived_status["batch_label"]
 
+    # Professional Verification Status
+    student["verification_status"] = get_verification_status(student)
+
     # Ensure badges and metadata are available
+    edu = student.get("education")
+    ug_status = edu.get("undergraduate", {}).get("verification_status") if isinstance(edu, dict) else None
+    approval = student.get("approval") if isinstance(student.get("approval"), dict) else {}
+    verif = student.get("verification_status") if isinstance(student.get("verification_status"), dict) else {}
+    github_conn = bool(verif.get("github", {}).get("connected")) if isinstance(verif.get("github"), dict) else False
+    linkedin_conn = bool(verif.get("linkedin", {}).get("connected")) if isinstance(verif.get("linkedin"), dict) else False
+
     badges = {
-        "identity": "VERIFIED" if student.get("approval", {}).get("faculty_status") == "APPROVED" else "REQUIRES_REVIEW",
-        "academics": "VERIFIED" if student.get("education", {}).get("undergraduate", {}).get("verification_status") == "VERIFIED" else "REQUIRES_REVIEW",
+        "identity": "VERIFIED" if approval.get("faculty_status") == "APPROVED" else "REQUIRES_REVIEW",
+        "academics": "VERIFIED" if ug_status == "VERIFIED" else "REQUIRES_REVIEW",
         "academic_batch": "SYSTEM_DERIVED",
         "study_year": "SYSTEM_DERIVED",
         "skills": "STUDENT_EDITABLE",
         "projects": "STUDENT_EDITABLE",
-        "resume": "AI_SUGGESTION" if student.get("resume_scanned") else "STUDENT_EDITABLE"
+        "resume": "AI_SUGGESTION" if student.get("resume_scanned") else "STUDENT_EDITABLE",
+        "github_verification": "VERIFIED" if github_conn else "NOT_CONNECTED",
+        "linkedin_verification": "VERIFIED" if linkedin_conn else "NOT_CONNECTED"
     }
     student["field_badges"] = badges
     return student
