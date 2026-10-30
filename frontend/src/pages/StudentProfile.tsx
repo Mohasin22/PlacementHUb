@@ -20,7 +20,7 @@ import {
   SparklesIcon,
   GoogleDriveIcon,
 } from '../components/Icons';
-import { ProfessionalVerificationView } from '../components/ProfessionalVerificationView';
+
 import { StudentGDriveVault } from '../components/StudentGDriveVault';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
@@ -32,14 +32,11 @@ interface StudentProfileProps {
   onNavigateToDrives?: () => void;
 }
 
-export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTab, defaultTab, onNavigateToDrives }) => {
+export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTab, defaultTab }) => {
   const [profile, setProfile] = useState<any>(null);
-  type ProfileNavTab = 'basic' | 'education' | 'skills' | 'verification' | 'gdrive_vault';
+  type ProfileNavTab = 'basic' | 'education' | 'skills' | 'gdrive_vault';
   const effectiveTab = defaultTab || initialTab;
   const [activeProfileTab, setActiveProfileTab] = useState<ProfileNavTab>(() => {
-    if (effectiveTab === 'verification' || (typeof window !== 'undefined' && window.location.hash.includes('verification'))) {
-      return 'verification';
-    }
     if (effectiveTab === 'gdrive_vault') {
       return 'gdrive_vault';
     }
@@ -51,9 +48,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
 
   useEffect(() => {
     const tab = defaultTab || initialTab;
-    if (tab === 'verification' || (typeof window !== 'undefined' && window.location.hash.includes('verification'))) {
-      setActiveProfileTab('verification');
-    } else if (tab === 'gdrive_vault') {
+    if (tab === 'gdrive_vault') {
       setActiveProfileTab('gdrive_vault');
     } else if (tab === 'basic' || tab === 'education' || tab === 'skills') {
       setActiveProfileTab(tab);
@@ -591,12 +586,6 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
           { key: 'education', label: 'Education & Location', icon: GraduationCapIcon },
           { key: 'skills', label: 'Skills & Preferences', icon: CodeIcon },
           {
-            key: 'verification',
-            label: 'Verification',
-            icon: CheckCircleIcon,
-            badge: profile?.verification_status?.drives_unlocked ? '✓ Verified' : 'Action Required',
-          },
-          {
             key: 'gdrive_vault',
             label: 'Google Drive PLACEMENT Vault',
             icon: GoogleDriveIcon,
@@ -613,11 +602,6 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
               type="button"
               onClick={() => {
                 setActiveProfileTab(t.key as ProfileNavTab);
-                if (t.key === 'verification') {
-                  window.location.hash = 'verification';
-                } else if (window.location.hash.includes('verification')) {
-                  window.location.hash = '';
-                }
               }}
               style={{
                 display: 'inline-flex',
@@ -662,16 +646,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
         <StudentGDriveVault token={token} studentProfile={profile} />
       )}
 
-      {/* ── VERIFICATION TAB CONTENT ────────────────────────────────────────── */}
-      {activeProfileTab === 'verification' && (
-        <ProfessionalVerificationView
-          token={token}
-          onNavigateToDrives={onNavigateToDrives}
-          onStatusChange={() => {
-            fetchProfile();
-          }}
-        />
-      )}
+
 
       {/* ── BASIC INFO TAB CONTENT ──────────────────────────────────────────── */}
       {activeProfileTab === 'basic' && (

@@ -498,7 +498,7 @@ async def request_changes_submission(
     )
     return {"message": "Changes requested from student.", "status": "CHANGES_REQUESTED"}
 
-@router.post("/reviews/updates/{update_id}/approve", dependencies=[Depends(RoleChecker(["Faculty"]))])
+@router.post("/reviews/updates/{update_id}/approve", dependencies=[Depends(RoleChecker(["Faculty", "TPO"]))])
 async def approve_update(
     update_id: str,
     current_user: dict = Depends(get_current_user),
@@ -513,7 +513,7 @@ async def approve_update(
     await db.db.student_pending_updates.delete_one(id_query(update_id))
     return {"message": "Student profile updates applied successfully."}
 
-@router.post("/reviews/updates/{update_id}/reject", dependencies=[Depends(RoleChecker(["Faculty"]))])
+@router.post("/reviews/updates/{update_id}/reject", dependencies=[Depends(RoleChecker(["Faculty", "TPO"]))])
 async def reject_update(
     update_id: str,
     current_user: dict = Depends(get_current_user),

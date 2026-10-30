@@ -754,16 +754,18 @@ async def process_excel_import(
                 )
             ),
             authentication=AuthenticationState(
-                account_status="IMPORTED_PENDING_FACULTY",
+                account_status="READY_FOR_FIRST_LOGIN",
                 first_login_completed=False,
                 password_set=False,
                 verified_institutional_email=False,
                 verified_personal_email=False
             ),
             approval=ApprovalState(
-                faculty_status="PENDING" if (hierarchy_res["is_mapped"] and not hierarchy_res["batch_duration_mismatch"]) else "MAPPING_REVIEW",
+                faculty_status="APPROVED",
                 faculty_id=hierarchy_res["faculty_id"],
-                faculty_name=hierarchy_res["faculty_name"]
+                faculty_name=hierarchy_res["faculty_name"],
+                approved_at=now_utc.isoformat(),
+                approved_by=imported_by_user_id or "BULK_IMPORT"
             ),
             import_metadata=ImportMetadata(
                 source_file=source_filename,
@@ -833,6 +835,24 @@ async def process_excel_import(
                     source="excel_import",
                     source_details={"source_file": source_filename, "batch_id": batch_id}
                 )
+            # Preserve existing login credentials and active status if student already exists
+            if existing_student_doc:
+                existing_auth = existing_student_doc.get("authentication", {})
+                existing_pw = existing_auth.get("password_hash") or existing_student_doc.get("password_hash")
+                if existing_pw:
+                    mongo_doc["authentication"]["password_hash"] = existing_pw
+                    mongo_doc["authentication"]["password_set"] = True
+                    mongo_doc["password_hash"] = existing_pw
+                if existing_auth.get("first_login_completed"):
+                    mongo_doc["authentication"]["first_login_completed"] = True
+                if existing_auth.get("account_status") == "ACTIVE":
+                    mongo_doc["authentication"]["account_status"] = "ACTIVE"
+                existing_approval = existing_student_doc.get("approval", {})
+                if existing_approval.get("faculty_status") in ["APPROVED", "REJECTED", "CHANGES_REQUESTED"]:
+                    mongo_doc["approval"]["faculty_status"] = existing_approval.get("faculty_status")
+                    if existing_approval.get("rejection_reason"):
+                        mongo_doc["approval"]["rejection_reason"] = existing_approval.get("rejection_reason")
+
             res = await db.db.students.update_one(filter_query, {"$set": mongo_doc}, upsert=True)
             if res.upserted_id:
                 inserted_count += 1
