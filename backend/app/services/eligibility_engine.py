@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
 from app.db.connection import db
-from app.db.utils import id_query, parse_id
+from app.db.utils import id_query, parse_id, sanitize_student_record
 from app.services.department_normalizer import are_departments_equivalent
 
 
@@ -324,6 +324,6 @@ async def get_eligible_students_for_drive(drive_id: str, institution_id: str) ->
             st["id"] = str(st["_id"])
             st["derived_academic_status"] = derived_status
             st["eligibility_breakdown"] = breakdown
-            eligible_list.append(st)
+            eligible_list.append(sanitize_student_record(st))
 
     return eligible_list

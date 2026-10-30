@@ -6,7 +6,6 @@ import {
   CalendarIcon,
   UsersIcon,
   UserIcon,
-  UploadIcon,
   BuildingIcon,
   ClassIcon
 } from './Icons';
@@ -38,7 +37,6 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
           { key: 'analytics', label: 'Analytics', icon: AnalyticsIcon },
           { key: 'events', label: 'Seminars & Events', icon: CalendarIcon },
           { key: 'faculty', label: 'Faculty Coordinators', icon: BuildingIcon },
-          { key: 'export', label: 'Export Data', icon: UploadIcon },
         ];
       case 'Dean':
         return [
@@ -72,43 +70,71 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
   };
 
   return (
-    <aside
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <div
       style={{
         width: isHovered ? 240 : 72,
-        background: '#0B192C',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: isHovered ? '20px 16px' : '20px 10px',
-        minHeight: '100vh',
-        position: 'sticky',
-        top: 0,
-        zIndex: 40,
         flexShrink: 0,
-        color: '#FFFFFF',
-        transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        overflow: 'hidden',
-        boxShadow: isHovered ? '4px 0 24px rgba(0, 0, 0, 0.25)' : 'none',
+        transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: 'relative',
+        zIndex: 50,
       }}
     >
+      <aside
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{
+          width: isHovered ? 240 : 72,
+          background: '#000000',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: isHovered ? '20px 16px' : '20px 10px',
+          height: '100vh',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 50,
+          flexShrink: 0,
+          color: '#FFFFFF',
+          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          borderTopRightRadius: 24,
+          borderBottomRightRadius: 24,
+          boxShadow: isHovered ? '6px 0 28px rgba(0, 0, 0, 0.5)' : '2px 0 12px rgba(0, 0, 0, 0.25)',
+          borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+        }}
+      >
       <div>
         {/* Top Sidebar Header: Logo & College Name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <img
-            src="/logo.png"
-            alt="GVPCDPGC Logo"
+          <div
             style={{
               width: 42,
               height: 42,
               borderRadius: '50%',
-              objectFit: 'cover',
+              background: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               flexShrink: 0,
               margin: isHovered ? '0' : '0 auto',
+              padding: 4,
+              boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
               transition: 'margin 0.3s ease',
             }}
-          />
+          >
+            <img
+              src="/logo.png"
+              alt="PlacementHub Logo"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+              }}
+            />
+          </div>
           <div
             style={{
               opacity: isHovered ? 1 : 0,
@@ -157,13 +183,25 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
                 key={item.key}
                 onClick={() => handleSelectTab(item.key)}
                 title={!isHovered ? item.label : undefined}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.currentTarget.style.color = '#FFFFFF';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = '#94A3B8';
+                  }
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: isHovered ? 12 : 0,
                   justifyContent: isHovered ? 'flex-start' : 'center',
                   padding: isHovered ? '10px 14px' : '12px 10px',
-                  borderRadius: 10,
+                  borderRadius: 12,
                   border: 'none',
                   background: isActive ? '#2563EB' : 'transparent',
                   color: isActive ? '#FFFFFF' : '#94A3B8',
@@ -241,5 +279,6 @@ export const Sidebar: React.FC<SidebarNavProps> = ({
         )}
       </div>
     </aside>
+    </div>
   );
 };

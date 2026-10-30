@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 import uuid
 from app.db.connection import db
-from app.db.utils import id_query, parse_id
+from app.db.utils import id_query, parse_id, sanitize_student_record
 from app.services.audit import log_audit_event
 
 class DuplicateDetectionService:
@@ -292,8 +292,8 @@ class DuplicateDetectionService:
         source_details: Optional[Dict[str, Any]] = None
     ) -> str:
         """Stores a potential duplicate incident in duplicate_records collection for faculty/admin review."""
-        existing = detection_result.get("existing_student") or {}
-        incoming = detection_result.get("incoming_record") or {}
+        existing = sanitize_student_record(dict(detection_result.get("existing_student") or {}))
+        incoming = sanitize_student_record(dict(detection_result.get("incoming_record") or {}))
 
         duplicate_doc = {
             "duplicate_id": str(uuid.uuid4()),

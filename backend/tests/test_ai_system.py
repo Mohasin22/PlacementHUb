@@ -188,7 +188,8 @@ async def test_human_approved_publishing_flow():
     assert res["eligible_students_notified"] == 1
 
     # Verify real placement drive exists in DB
-    drive = await db.db.placement_drives.find_one({"_id": db.db.placement_drives.database.client.get_database()._Client__classes["ObjectId"](res["drive_id"]) if hasattr(db.db.placement_drives.database.client, "_Client__classes") else None} if False else {"company_name": "Google"})
+    from app.db.utils import id_query
+    drive = await db.db.placement_drives.find_one(id_query(res["drive_id"]))
     assert drive is not None
     assert drive["package"] == "25 LPA"
 

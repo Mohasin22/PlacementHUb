@@ -3,7 +3,6 @@ import { StudentDetailModal } from './StudentDetailModal';
 import { StudentAvatar } from './StudentAvatar';
 import {
   BuildingIcon,
-  ClassIcon,
   SearchIcon,
   RefreshIcon,
   ChevronRightIcon,
@@ -12,14 +11,11 @@ import {
   ListIcon,
   CheckCircleIcon,
   AlertCircleIcon,
-  ClockIcon,
-  AnalyticsIcon,
   IdCardIcon,
   ChevronDownIcon,
   FileSpreadsheetIcon,
   GraduationCapIcon,
   SchoolIcon,
-  UsersIcon,
 } from './Icons';
 
 interface DeanStudentHierarchyViewProps {
@@ -58,14 +54,12 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
     setLocalStudents(students || []);
   }, [students]);
 
-  // 4-Level Navigation State:
+  // 3-Level Navigation State:
   // Level 1: selectedDeptId = null (Departments / Programs)
   // Level 2: selectedDeptId set, selectedBranchId = null (Branches inside Department)
-  // Level 3: selectedBranchId set, selectedClassId = null (Classes inside Branch)
-  // Level 4: selectedClassId set (Students inside Class)
+  // Level 3: selectedBranchId set (Students inside Branch)
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
   // Selected Student for Profile Modal
   const [activeStudentModal, setActiveStudentModal] = useState<any | null>(null);
@@ -77,7 +71,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
   const [backlogFilter, setBacklogFilter] = useState<'all' | 'clean' | 'backlogs'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  // ── 1. AGGREGATE & NORMALIZE 4-TIER HIERARCHY TREE ─────────────────────────
+  // ── 1. AGGREGATE & NORMALIZE 3-TIER HIERARCHY TREE ─────────────────────────
   const { departmentList, totalStats } = useMemo(() => {
     // Map to gather top-level departments (programs)
     const progMap = new Map<string, {
@@ -88,7 +82,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
       branchesMap: Map<string, {
         id: string;
         name: string;
-        classesMap: Map<string, { id: string; name: string; students: any[] }>;
         students: any[];
       }>;
       students: any[];
@@ -118,31 +111,19 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
             pObj.branchesMap.set(bId, {
               id: bId,
               name: bName,
-              classesMap: new Map(),
               students: [],
             });
           }
-          const bObj = pObj.branchesMap.get(bId)!;
-
-          (dept.classes || []).forEach((c: any) => {
-            const cId = String(c.id || c.name).trim();
-            const cName = c.name || 'Section A';
-            if (!bObj.classesMap.has(cId)) {
-              bObj.classesMap.set(cId, { id: cId, name: cName, students: [] });
-            }
-          });
         });
       });
     }
 
-    // 2. Assign all students to appropriate department ➔ branch ➔ class
+    // 2. Assign all students to appropriate department ➔ branch
     localStudents.forEach((st: any) => {
       const pName = st.program_name || st.academic_identity?.program_name || 'General Department';
       const pId = String(st.program_id || st.academic_identity?.program_id || pName).trim();
       const bName = st.department_name || st.academic_identity?.department_name || 'General Branch';
       const bId = String(st.department_id || st.academic_identity?.department_id || bName).trim();
-      const cName = st.class_name || st.academic_identity?.class_name || 'Section A';
-      const cId = String(st.class_id || st.academic_identity?.class_id || cName).trim();
 
       // Find or create Program/Department
       let pObj = progMap.get(pId);
@@ -179,75 +160,27 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
         bObj = {
           id: bId,
           name: bName,
-          classesMap: new Map(),
           students: [],
         };
         pObj.branchesMap.set(bId, bObj);
       }
       bObj.students.push(st);
-
-      // Find or create Class
-      let cObj = bObj.classesMap.get(cId);
-      if (!cObj) {
-        for (const cVal of bObj.classesMap.values()) {
-          if (cVal.name.toLowerCase() === cName.toLowerCase()) {
-            cObj = cVal;
-            break;
-          }
-        }
-      }
-      if (!cObj) {
-        cObj = { id: cId, name: cName, students: [] };
-        bObj.classesMap.set(cId, cObj);
-      }
-      cObj.students.push(st);
     });
 
     // 3. Transform into rich hierarchical structures with computed stats
     let totalOverallStudents = 0;
     let totalOverallBranches = 0;
-    let totalOverallClasses = 0;
     let totalOverallResumes = 0;
     let totalOverallCgpaSum = 0;
     let totalOverallCgpaValid = 0;
 
     const list = Array.from(progMap.values()).map((p, pIndex) => {
       let deptStudentsCount = p.students.length;
-      let deptClassesCount = 0;
       let deptResumesCount = 0;
       let deptCgpaSum = 0;
       let deptCgpaValid = 0;
 
       const branchesList = Array.from(p.branchesMap.values()).map((b, bIndex) => {
-        const classesList = Array.from(b.classesMap.values()).map((c) => {
-          const cStudents = c.students;
-          const validCgpas = cStudents.filter((s) => Number(s.cgpa) > 0);
-          const cAvgCgpa = validCgpas.length > 0
-            ? validCgpas.reduce((acc, s) => acc + Number(s.cgpa), 0) / validCgpas.length
-            : 0;
-          const cResumes = cStudents.filter((s) => Boolean(s.resume_url || s.documents?.resume)).length;
-          const cBacklogs = cStudents.filter((s) => (s.active_backlogs || 0) > 0).length;
-
-          const firstSt = cStudents[0];
-          const batch = firstSt?.batch_label || '2023–2027';
-          const studyYear = firstSt?.study_year_label || `${firstSt?.current_study_year || 4}th Year`;
-          const semester = firstSt?.semester_label || `${firstSt?.current_semester || 7}th Sem`;
-
-          return {
-            id: c.id,
-            name: c.name,
-            students: cStudents,
-            studentCount: cStudents.length,
-            avgCgpa: cAvgCgpa,
-            resumesUploaded: cResumes,
-            missingResumes: cStudents.length - cResumes,
-            activeBacklogsCount: cBacklogs,
-            batchLabel: batch,
-            studyYearLabel: studyYear,
-            semesterLabel: semester,
-          };
-        });
-
         const bStudents = b.students;
         const bValidCgpas = bStudents.filter((s) => Number(s.cgpa) > 0);
         const bAvgCgpa = bValidCgpas.length > 0
@@ -256,7 +189,11 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
         const bResumes = bStudents.filter((s) => Boolean(s.resume_url || s.documents?.resume)).length;
         const bBacklogs = bStudents.filter((s) => (s.active_backlogs || 0) > 0).length;
 
-        deptClassesCount += classesList.length;
+        const firstSt = bStudents[0];
+        const batch = firstSt?.batch_label || '2023–2027';
+        const studyYear = firstSt?.study_year_label || `${firstSt?.current_study_year || 4}th Year`;
+        const semester = firstSt?.semester_label || `${firstSt?.current_semester || 7}th Sem`;
+
         deptResumesCount += bResumes;
         bValidCgpas.forEach((s) => {
           deptCgpaSum += Number(s.cgpa);
@@ -265,25 +202,24 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
 
         const branchColorScheme = BRANCH_COLORS[bIndex % BRANCH_COLORS.length];
 
-        classesList.sort((a, b) => b.studentCount - a.studentCount || a.name.localeCompare(b.name));
-
         return {
           id: b.id,
           name: b.name,
-          classes: classesList,
           students: bStudents,
           studentCount: bStudents.length,
           avgCgpa: bAvgCgpa,
           resumesUploaded: bResumes,
           missingResumes: bStudents.length - bResumes,
           activeBacklogsCount: bBacklogs,
+          batchLabel: batch,
+          studyYearLabel: studyYear,
+          semesterLabel: semester,
           colorScheme: branchColorScheme,
         };
       });
 
       totalOverallStudents += deptStudentsCount;
       totalOverallBranches += branchesList.length;
-      totalOverallClasses += deptClassesCount;
       totalOverallResumes += deptResumesCount;
       totalOverallCgpaSum += deptCgpaSum;
       totalOverallCgpaValid += deptCgpaValid;
@@ -302,7 +238,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
         students: p.students,
         studentCount: deptStudentsCount,
         branchCount: branchesList.length,
-        classCount: deptClassesCount,
         avgCgpa: deptAvgCgpa,
         resumesUploaded: deptResumesCount,
         missingResumes: deptStudentsCount - deptResumesCount,
@@ -319,7 +254,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
       totalStats: {
         totalDepartments: list.length,
         totalBranches: totalOverallBranches,
-        totalClasses: totalOverallClasses,
         totalStudents: totalOverallStudents,
         totalResumes: totalOverallResumes,
         missingResumes: totalOverallStudents - totalOverallResumes,
@@ -339,15 +273,10 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
     return selectedDepartment.branches.find((b) => b.id === selectedBranchId) || null;
   }, [selectedDepartment, selectedBranchId]);
 
-  const selectedClass = useMemo(() => {
-    if (!selectedBranch || !selectedClassId) return null;
-    return selectedBranch.classes.find((c) => c.id === selectedClassId) || null;
-  }, [selectedBranch, selectedClassId]);
-
-  // Filtered students for Level 4
-  const classStudentsFiltered = useMemo(() => {
-    if (!selectedClass) return [];
-    return selectedClass.students.filter((st: any) => {
+  // Filtered students for selected branch
+  const branchStudentsFiltered = useMemo(() => {
+    if (!selectedBranch) return [];
+    return selectedBranch.students.filter((st: any) => {
       // Search text
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -378,15 +307,13 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
 
       return true;
     });
-  }, [selectedClass, searchQuery, cgpaFilter, resumeFilter, backlogFilter]);
+  }, [selectedBranch, searchQuery, cgpaFilter, resumeFilter, backlogFilter]);
 
   // Back step navigation
   const handleGoBack = () => {
-    if (selectedClassId) {
-      setSelectedClassId(null);
-      setSearchQuery('');
-    } else if (selectedBranchId) {
+    if (selectedBranchId) {
       setSelectedBranchId(null);
+      setSearchQuery('');
     } else if (selectedDeptId) {
       setSelectedDeptId(null);
     }
@@ -416,7 +343,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
               onClick={() => {
                 setSelectedDeptId(null);
                 setSelectedBranchId(null);
-                setSelectedClassId(null);
                 setSearchQuery('');
               }}
               style={{
@@ -444,7 +370,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                 <button
                   onClick={() => {
                     setSelectedBranchId(null);
-                    setSelectedClassId(null);
                     setSearchQuery('');
                   }}
                   style={{
@@ -471,35 +396,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
             {selectedBranch && (
               <>
                 <ChevronRightIcon size={14} color="var(--text-secondary, #94A3B8)" />
-                <button
-                  onClick={() => {
-                    setSelectedClassId(null);
-                    setSearchQuery('');
-                  }}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    background: selectedBranchId && !selectedClassId ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
-                    border: 'none',
-                    color: selectedBranchId && !selectedClassId ? '#2563EB' : 'var(--text-secondary, #64748B)',
-                    fontWeight: selectedBranchId && !selectedClassId ? 700 : 500,
-                    fontSize: '0.9rem',
-                    cursor: 'pointer',
-                    padding: '5px 12px',
-                    borderRadius: 8,
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  <BuildingIcon size={16} color={selectedBranchId && !selectedClassId ? '#2563EB' : 'currentColor'} />
-                  <span>{selectedBranch.name}</span>
-                </button>
-              </>
-            )}
-
-            {selectedClass && (
-              <>
-                <ChevronRightIcon size={14} color="var(--text-secondary, #94A3B8)" />
                 <span
                   style={{
                     display: 'inline-flex',
@@ -513,8 +409,8 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                     borderRadius: 8,
                   }}
                 >
-                  <ClassIcon size={16} color="#2563EB" />
-                  <span>Class {selectedClass.name}</span>
+                  <BuildingIcon size={16} color="#2563EB" />
+                  <span>{selectedBranch.name}</span>
                 </span>
               </>
             )}
@@ -526,20 +422,17 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
               <span>Select a department to explore its branches, cohorts, and student records.</span>
             )}
             {selectedDepartment && !selectedBranch && (
-              <span>Showing branches under <strong>{selectedDepartment.name}</strong>. Select a branch to view its classes.</span>
+              <span>Showing branches under <strong>{selectedDepartment.name}</strong>. Select a branch to view enrolled students.</span>
             )}
-            {selectedBranch && !selectedClass && (
-              <span>Showing classes in <strong>{selectedBranch.name}</strong> ({selectedDepartment?.name}). Select a class to view enrolled students.</span>
-            )}
-            {selectedClass && (
-              <span>Viewing students enrolled in <strong>{selectedDepartment?.name} &bull; {selectedBranch?.name} &bull; Class {selectedClass.name}</strong></span>
+            {selectedBranch && (
+              <span>Viewing students enrolled in <strong>{selectedDepartment?.name} &bull; {selectedBranch.name}</strong></span>
             )}
           </div>
         </div>
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {(selectedDeptId || selectedBranchId || selectedClassId) && (
+          {(selectedDeptId || selectedBranchId) && (
             <button
               onClick={handleGoBack}
               style={{
@@ -674,11 +567,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#60A5FA', marginTop: 2 }}>{totalStats.totalBranches}</div>
               </div>
               <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.15)' }} />
-              <div style={{ textAlign: 'center', minWidth: 90 }}>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Classes</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#A78BFA', marginTop: 2 }}>{totalStats.totalClasses}</div>
-              </div>
-              <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.15)' }} />
               <div style={{ textAlign: 'center', minWidth: 100 }}>
                 <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Students</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#34D399', marginTop: 2 }}>{totalStats.totalStudents}</div>
@@ -794,9 +682,9 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)', fontWeight: 600 }}>Classes</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)', fontWeight: 600 }}>Students</div>
                       <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary, #0F172A)', marginTop: 2 }}>
-                        {dept.classCount}
+                        {dept.studentCount}
                       </div>
                     </div>
                     <div>
@@ -919,7 +807,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                 </h2>
               </div>
               <p style={{ margin: 0, fontSize: '0.88rem', color: '#94A3B8', maxWidth: 520 }}>
-                Showing all engineering & discipline branches under {selectedDepartment.name}. Click on a branch to view its classes.
+                Showing all engineering & discipline branches under {selectedDepartment.name}. Click on a branch to view enrolled students.
               </p>
             </div>
 
@@ -928,11 +816,6 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
               <div style={{ textAlign: 'center', minWidth: 90 }}>
                 <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Branches</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#60A5FA', marginTop: 2 }}>{selectedDepartment.branchCount}</div>
-              </div>
-              <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.15)' }} />
-              <div style={{ textAlign: 'center', minWidth: 90 }}>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Classes</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#A78BFA', marginTop: 2 }}>{selectedDepartment.classCount}</div>
               </div>
               <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.15)' }} />
               <div style={{ textAlign: 'center', minWidth: 100 }}>
@@ -1011,7 +894,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                           {branch.name}
                         </h3>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #64748B)' }}>
-                          Branch &bull; {branch.classes.length} Classes
+                          {branch.batchLabel}
                         </span>
                       </div>
                     </div>
@@ -1044,9 +927,9 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)', fontWeight: 600 }}>Classes</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)', fontWeight: 600 }}>Students</div>
                       <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary, #0F172A)', marginTop: 2 }}>
-                        {branch.classes.length}
+                        {branch.studentCount}
                       </div>
                     </div>
                     <div>
@@ -1116,7 +999,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                     }}
                   >
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #64748B)' }}>
-                      {branch.classes.length} Registered Classes
+                      {branch.studentCount} Enrolled Students
                     </span>
                     <span
                       style={{
@@ -1128,7 +1011,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                         fontSize: '0.85rem',
                       }}
                     >
-                      <span>View Classes</span>
+                      <span>View Students</span>
                       <ChevronRightIcon size={14} color="currentColor" />
                     </span>
                   </div>
@@ -1154,240 +1037,10 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
         </div>
       )}
 
-      {/* ── LEVEL 3: CLASSES (INSIDE SELECTED BRANCH) ─────────────────────── */}
-      {selectedDepartment && selectedBranch && !selectedClass && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Branch Header Banner */}
-          <div
-            style={{
-              background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
-              color: '#FFFFFF',
-              borderRadius: 16,
-              padding: '24px 28px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 20,
-              boxShadow: '0 4px 20px rgba(15, 23, 42, 0.15)',
-            }}
-          >
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span style={{ background: 'rgba(255,255,255,0.12)', padding: '6px', borderRadius: 8, display: 'inline-flex' }}>
-                  <BuildingIcon size={20} color="#60A5FA" />
-                </span>
-                <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                  {selectedBranch.name} Classes
-                </h2>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.88rem', color: '#94A3B8', maxWidth: 520 }}>
-                {selectedDepartment.name} &bull; Select a class section below to view individual student profiles and academic records.
-              </p>
-            </div>
-
-            {/* Quick Metrics in Branch */}
-            <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ textAlign: 'center', minWidth: 90 }}>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Classes</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#A78BFA', marginTop: 2 }}>{selectedBranch.classes.length}</div>
-              </div>
-              <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.15)' }} />
-              <div style={{ textAlign: 'center', minWidth: 100 }}>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Students</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#34D399', marginTop: 2 }}>{selectedBranch.studentCount}</div>
-              </div>
-              <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.15)' }} />
-              <div style={{ textAlign: 'center', minWidth: 90 }}>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avg CGPA</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#FBBF24', marginTop: 2 }}>
-                  {selectedBranch.avgCgpa > 0 ? selectedBranch.avgCgpa.toFixed(2) : '—'}
-                </div>
-              </div>
-              <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.15)' }} />
-              <div style={{ textAlign: 'center', minWidth: 90 }}>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Backlogs</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: selectedBranch.activeBacklogsCount === 0 ? '#34D399' : '#F87171', marginTop: 2 }}>
-                  {selectedBranch.activeBacklogsCount}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Classes Cards Grid */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-              gap: 18,
-            }}
-          >
-            {selectedBranch.classes.map((cls) => {
-              const resRate = cls.studentCount > 0 ? Math.round((cls.resumesUploaded / cls.studentCount) * 100) : 0;
-
-              return (
-                <div
-                  key={cls.id}
-                  onClick={() => setSelectedClassId(cls.id)}
-                  style={{
-                    background: 'var(--card-bg, #FFFFFF)',
-                    border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                    borderRadius: 16,
-                    padding: 20,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                    transition: 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: 14,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(0,0,0,0.08)';
-                    e.currentTarget.style.borderColor = '#3B82F6';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
-                    e.currentTarget.style.borderColor = 'var(--border-color, rgba(0,0,0,0.08))';
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 10,
-                          background: 'rgba(59, 130, 246, 0.1)',
-                          color: '#2563EB',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <ClassIcon size={20} color="#2563EB" />
-                      </div>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary, #0F172A)' }}>
-                          Class {cls.name}
-                        </h3>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #64748B)' }}>
-                          {cls.batchLabel}
-                        </span>
-                      </div>
-                    </div>
-
-                    <span
-                      style={{
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        color: '#2563EB',
-                        padding: '3px 10px',
-                        borderRadius: 8,
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {cls.studentCount} Students
-                    </span>
-                  </div>
-
-                  {/* Class Timeline & CGPA chips */}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'var(--bg-main, #F8FAFC)',
-                        border: '1px solid var(--border-color, #E2E8F0)',
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        fontSize: '0.75rem',
-                        color: 'var(--text-secondary, #64748B)',
-                      }}
-                    >
-                      <ClockIcon size={12} color="var(--text-secondary, #64748B)" />
-                      <span>{cls.studyYearLabel} &bull; {cls.semesterLabel}</span>
-                    </span>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'var(--bg-main, #F8FAFC)',
-                        border: '1px solid var(--border-color, #E2E8F0)',
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        fontSize: '0.75rem',
-                        color: 'var(--text-secondary, #64748B)',
-                      }}
-                    >
-                      <AnalyticsIcon size={12} color="var(--text-secondary, #64748B)" />
-                      <span>Avg CGPA: <strong style={{ color: 'var(--text-primary, #0F172A)' }}>{cls.avgCgpa > 0 ? cls.avgCgpa.toFixed(2) : '—'}</strong></span>
-                    </span>
-                  </div>
-
-                  {/* Resumes Progress */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', marginBottom: 4 }}>
-                      <span style={{ color: 'var(--text-secondary, #64748B)' }}>Resume Status</span>
-                      <strong style={{ color: resRate >= 80 ? '#16A34A' : '#D97706' }}>
-                        {resRate}% ({cls.resumesUploaded}/{cls.studentCount})
-                      </strong>
-                    </div>
-                    <div
-                      style={{
-                        height: 5,
-                        background: 'rgba(0,0,0,0.06)',
-                        borderRadius: 3,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: '100%',
-                          width: `${resRate}%`,
-                          background: resRate >= 80 ? '#16A34A' : '#F59E0B',
-                          borderRadius: 3,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 'auto', paddingTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#2563EB', fontWeight: 700, fontSize: '0.85rem' }}>
-                      <span>View {cls.studentCount} Students</span>
-                      <ChevronRightIcon size={14} color="#2563EB" />
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-
-            {selectedBranch.classes.length === 0 && (
-              <div
-                style={{
-                  gridColumn: '1 / -1',
-                  textAlign: 'center',
-                  padding: 50,
-                  background: 'var(--card-bg, #FFFFFF)',
-                  borderRadius: 16,
-                  color: 'var(--text-secondary, #64748B)',
-                }}
-              >
-                No classes registered under {selectedBranch.name} yet.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── LEVEL 4: STUDENTS (INSIDE SELECTED CLASS) ─────────────────────── */}
-      {selectedDepartment && selectedBranch && selectedClass && (
+      {/* ── LEVEL 3: STUDENTS (INSIDE SELECTED BRANCH) ─────────────────────── */}
+      {selectedDepartment && selectedBranch && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* Class Header Banner */}
+          {/* Branch Header Banner */}
           <div
             style={{
               background: 'var(--card-bg, #FFFFFF)',
@@ -1404,7 +1057,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary, #0F172A)' }}>
-                  {selectedDepartment.name} &bull; {selectedBranch.name} &bull; Class {selectedClass.name}
+                  {selectedDepartment.name} &bull; {selectedBranch.name}
                 </h2>
                 <span
                   style={{
@@ -1416,32 +1069,32 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                     fontWeight: 700,
                   }}
                 >
-                  {selectedClass.studentCount} Students
+                  {selectedBranch.studentCount} Students
                 </span>
               </div>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary, #64748B)' }}>
-                {selectedClass.batchLabel} &bull; {selectedClass.studyYearLabel} &bull; {selectedClass.semesterLabel}
+                {selectedBranch.batchLabel} &bull; {selectedBranch.studyYearLabel} &bull; {selectedBranch.semesterLabel}
               </p>
             </div>
 
-            {/* Quick Metrics in Class */}
+            {/* Quick Metrics in Branch */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ background: 'var(--bg-main, #F8FAFC)', padding: '6px 14px', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border-color, #E2E8F0)' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)' }}>Class Avg CGPA</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)' }}>Branch Avg CGPA</div>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#2563EB', marginTop: 2 }}>
-                  {selectedClass.avgCgpa > 0 ? selectedClass.avgCgpa.toFixed(2) : '—'}
+                  {selectedBranch.avgCgpa > 0 ? selectedBranch.avgCgpa.toFixed(2) : '—'}
                 </div>
               </div>
               <div style={{ background: 'var(--bg-main, #F8FAFC)', padding: '6px 14px', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border-color, #E2E8F0)' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)' }}>Resumes</div>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#16A34A', marginTop: 2 }}>
-                  {selectedClass.resumesUploaded} / {selectedClass.studentCount}
+                  {selectedBranch.resumesUploaded} / {selectedBranch.studentCount}
                 </div>
               </div>
               <div style={{ background: 'var(--bg-main, #F8FAFC)', padding: '6px 14px', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border-color, #E2E8F0)' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #64748B)' }}>Active Backlogs</div>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: selectedClass.activeBacklogsCount === 0 ? '#16A34A' : '#DC2626', marginTop: 2 }}>
-                  {selectedClass.activeBacklogsCount}
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: selectedBranch.activeBacklogsCount === 0 ? '#16A34A' : '#DC2626', marginTop: 2 }}>
+                  {selectedBranch.activeBacklogsCount}
                 </div>
               </div>
             </div>
@@ -1641,7 +1294,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
           </div>
 
           {/* Students Display (Cards or Table) */}
-          {classStudentsFiltered.length === 0 ? (
+          {branchStudentsFiltered.length === 0 ? (
             <div
               style={{
                 textAlign: 'center',
@@ -1698,7 +1351,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                 gap: 18,
               }}
             >
-              {classStudentsFiltered.map((st) => {
+              {branchStudentsFiltered.map((st) => {
                 const sName = st.name || st.identity?.full_name || 'Student';
                 const sRoll = st.roll_number || st.student_id || 'N/A';
                 const sCgpa = Number(st.cgpa || 0).toFixed(2);
@@ -1913,7 +1566,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                   </tr>
                 </thead>
                 <tbody>
-                  {classStudentsFiltered.map((st) => {
+                  {branchStudentsFiltered.map((st) => {
                     const sName = st.name || st.identity?.full_name || 'Student';
                     const sRoll = st.roll_number || st.student_id || 'N/A';
                     const sCgpa = Number(st.cgpa || 0).toFixed(2);

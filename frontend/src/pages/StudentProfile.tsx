@@ -18,16 +18,43 @@ import {
   UploadIcon,
   RefreshIcon,
   SparklesIcon,
+  GoogleDriveIcon,
 } from '../components/Icons';
+
+import { StudentGDriveVault } from '../components/StudentGDriveVault';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
 
 interface StudentProfileProps {
   token: string;
+  initialTab?: string;
+  defaultTab?: string;
+  onNavigateToDrives?: () => void;
 }
 
-export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
+export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTab, defaultTab }) => {
   const [profile, setProfile] = useState<any>(null);
+  type ProfileNavTab = 'basic' | 'education' | 'skills' | 'gdrive_vault';
+  const effectiveTab = defaultTab || initialTab;
+  const [activeProfileTab, setActiveProfileTab] = useState<ProfileNavTab>(() => {
+    if (effectiveTab === 'gdrive_vault') {
+      return 'gdrive_vault';
+    }
+    if (effectiveTab === 'education' || effectiveTab === 'skills') {
+      return effectiveTab;
+    }
+    return 'basic';
+  });
+
+  useEffect(() => {
+    const tab = defaultTab || initialTab;
+    if (tab === 'gdrive_vault') {
+      setActiveProfileTab('gdrive_vault');
+    } else if (tab === 'basic' || tab === 'education' || tab === 'skills') {
+      setActiveProfileTab(tab);
+    }
+  }, [initialTab, defaultTab]);
+
   const [editMode, setEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [scanningResume, setScanningResume] = useState(false);
@@ -108,7 +135,21 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
       const response = await fetch(`${API_BASE}/students/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error('Failed to load profile.');
+      if (response.status === 401) {
+        localStorage.removeItem('auth');
+        window.location.reload();
+        return;
+      }
+      if (!response.ok) {
+        let msg = 'Failed to load profile.';
+        try {
+          const errData = await response.json();
+          if (errData?.detail) {
+            msg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+          }
+        } catch {}
+        throw new Error(msg);
+      }
       const data = await response.json();
       setProfile(data);
 
@@ -388,41 +429,42 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
       {/* ── HEADER BANNER ─────────────────────────────────────────────────── */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #0B192C 0%, #1E3E62 100%)',
-          borderRadius: 20,
-          padding: '28px 32px',
-          color: '#FFFFFF',
+          background: '#FFFFFF',
+          border: '1px solid #E2E8F0',
+          borderRadius: 14,
+          padding: '24px 28px',
+          color: '#0F172A',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: 20,
-          boxShadow: '0 8px 24px rgba(11,25,44,0.25)',
-          marginBottom: 24,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          marginBottom: 20,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <StudentAvatar
             photoUrl={profile?.photo_url || profile?.documents?.profile_photo}
             name={profile?.name || identity.full_name || 'Student'}
-            size={72}
-            fontSize="1.8rem"
-            border="2px solid rgba(255,255,255,0.3)"
-            style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
+            size={68}
+            fontSize="1.6rem"
+            border="2px solid #E2E8F0"
+            style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
           />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800 }}>
+              <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#0F172A' }}>
                 {profile?.name || identity.full_name || 'Student Profile'}
               </h2>
               <span
                 style={{
-                  background: profile?.status === 'verified' ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)',
-                  color: profile?.status === 'verified' ? '#86EFAC' : '#FDE68A',
-                  border: `1px solid ${profile?.status === 'verified' ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`,
+                  background: profile?.status === 'verified' ? '#F0FDF4' : '#FFFBEB',
+                  color: profile?.status === 'verified' ? '#16A34A' : '#D97706',
+                  border: `1px solid ${profile?.status === 'verified' ? '#BBF7D0' : '#FDE68A'}`,
                   padding: '3px 10px',
                   borderRadius: 20,
-                  fontSize: '0.75rem',
+                  fontSize: '0.72rem',
                   fontWeight: 700,
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -433,14 +475,14 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
                 {profile?.status === 'verified' ? 'FACULTY VERIFIED' : 'PENDING APPROVAL'}
               </span>
             </div>
-            <p style={{ margin: '6px 0 0', opacity: 0.9, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <IdCardIcon size={14} color="#93C5FD" />
+            <p style={{ margin: '6px 0 0', color: '#64748B', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <IdCardIcon size={14} color="#2563EB" />
               <span>{profile?.roll_number || profile?.student_id}</span>
-              <span style={{ opacity: 0.6 }}>•</span>
-              <SchoolIcon size={14} color="#93C5FD" />
+              <span style={{ color: '#CBD5E1' }}>•</span>
+              <SchoolIcon size={14} color="#2563EB" />
               <span>{profile?.department_name || academicId.department_name || 'Department'}</span>
-              <span style={{ opacity: 0.6 }}>•</span>
-              <GraduationCapIcon size={14} color="#C4B5FD" />
+              <span style={{ color: '#CBD5E1' }}>•</span>
+              <GraduationCapIcon size={14} color="#7C3AED" />
               <span>Class of {profile?.passout_year || academicId.graduation_year || 2027}</span>
             </p>
           </div>
@@ -451,33 +493,35 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             <button
               onClick={() => setEditMode(true)}
               style={{
-                background: '#FFFFFF',
-                color: '#0B192C',
+                background: '#2563EB',
+                color: '#FFFFFF',
                 border: 'none',
-                padding: '10px 20px',
-                borderRadius: 10,
-                fontWeight: 700,
+                padding: '9px 18px',
+                borderRadius: 8,
+                fontWeight: 600,
                 cursor: 'pointer',
-                fontSize: '0.88rem',
+                fontSize: '0.85rem',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
+                boxShadow: '0 1px 2px rgba(37,99,235,0.2)',
               }}
             >
-              <UserIcon size={15} color="#0B192C" />
+              <UserIcon size={15} color="#FFFFFF" />
               <span>Edit Dynamic Profile</span>
             </button>
           ) : (
             <button
               onClick={() => setEditMode(false)}
               style={{
-                background: 'rgba(255,255,255,0.2)',
-                color: '#FFFFFF',
-                border: '1px solid rgba(255,255,255,0.4)',
-                padding: '10px 18px',
-                borderRadius: 10,
+                background: '#FFFFFF',
+                color: '#0F172A',
+                border: '1px solid #E2E8F0',
+                padding: '9px 18px',
+                borderRadius: 8,
                 fontWeight: 600,
                 cursor: 'pointer',
+                fontSize: '0.85rem',
               }}
             >
               Cancel
@@ -526,7 +570,88 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
         </div>
       )}
 
-      {/* ── SECTION 0: ACADEMIC BATCH & SYSTEM-DERIVED TIMELINE ───────────── */}
+      {/* ── STUDENT PROFILE SUB-NAVIGATION TABS ───────────────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          borderBottom: '1px solid var(--border-color)',
+          paddingBottom: 4,
+          marginBottom: 24,
+          overflowX: 'auto',
+        }}
+      >
+        {[
+          { key: 'basic', label: 'Basic Info', icon: UserIcon },
+          { key: 'education', label: 'Education & Location', icon: GraduationCapIcon },
+          { key: 'skills', label: 'Skills & Preferences', icon: CodeIcon },
+          {
+            key: 'gdrive_vault',
+            label: 'Google Drive PLACEMENT Vault',
+            icon: GoogleDriveIcon,
+            badge: profile?.gdrive_vault?.is_connected
+              ? (profile?.gdrive_vault?.verification_report?.overall_result === 'ALL_VERIFIED' ? '✓ Verified' : 'AI Active')
+              : 'Setup',
+          },
+        ].map((t) => {
+          const isActive = activeProfileTab === t.key;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => {
+                setActiveProfileTab(t.key as ProfileNavTab);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '11px 18px',
+                borderRadius: '10px 10px 0 0',
+                border: 'none',
+                background: isActive ? 'var(--card-bg, #FFFFFF)' : 'transparent',
+                color: isActive ? '#2563EB' : 'var(--text-secondary)',
+                fontWeight: isActive ? 700 : 500,
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                borderBottom: isActive ? '3px solid #2563EB' : '3px solid transparent',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Icon size={16} color="currentColor" />
+              <span>{t.label}</span>
+              {t.badge && (
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    fontWeight: 700,
+                    background: t.badge.includes('✓') ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                    color: t.badge.includes('✓') ? '#15803D' : '#DC2626',
+                  }}
+                >
+                  {t.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── GDRIVE VAULT TAB CONTENT ─────────────────────────────────────────── */}
+      {activeProfileTab === 'gdrive_vault' && (
+        <StudentGDriveVault token={token} studentProfile={profile} />
+      )}
+
+
+
+      {/* ── BASIC INFO TAB CONTENT ──────────────────────────────────────────── */}
+      {activeProfileTab === 'basic' && (
+        <>
+          {/* ── SECTION 0: ACADEMIC BATCH & SYSTEM-DERIVED TIMELINE ───────────── */}
       <div
         style={{
           background: 'var(--card-bg)',
@@ -603,9 +728,17 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
         </div>
       </div>
 
-      {/* ── RESPONSIVE DEDICATED LAYOUT: ACADEMIC RECORDS (SIDE) & DOCUMENTS VIEWER (MAIN) ── */}
-      <div className="profile-academic-docs-grid" style={{ marginBottom: 24 }}>
-        {/* ── SECTION 1: VERIFIED ACADEMIC RECORDS (AUTHORITATIVE) ──────────── */}
+          {/* ── SECTION 4: SECURITY SETTINGS (IN BASIC INFO) ──────────────────── */}
+          <div style={{ marginTop: 24 }}>
+            <ChangePassword token={token} />
+          </div>
+        </>
+      )}
+
+      {/* ── EDUCATION & LOCATION TAB CONTENT ────────────────────────────────── */}
+      {activeProfileTab === 'education' && (
+        <div className="profile-academic-docs-grid" style={{ marginBottom: 24 }}>
+          {/* ── SECTION 1: VERIFIED ACADEMIC RECORDS (AUTHORITATIVE) ──────────── */}
         <div
           style={{
             background: 'var(--card-bg)',
@@ -1165,18 +1298,20 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      )}
 
-      {/* ── SECTION 3: STUDENT DYNAMIC & EDITABLE PROFILE ────────────────── */}
-      <div
-        style={{
-          marginTop: 24,
-          background: 'var(--card-bg)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 16,
-          padding: 24,
-        }}
-      >
+      {/* ── SKILLS & PREFERENCES TAB CONTENT ────────────────────────────────── */}
+      {activeProfileTab === 'skills' && (
+        <div
+          style={{
+            marginTop: 24,
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 16,
+            padding: 24,
+          }}
+        >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <CodeIcon size={18} color="#2563EB" />
@@ -1360,12 +1495,8 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             </div>
           )}
         </form>
-      </div>
-
-      {/* ── SECTION 4: SECURITY SETTINGS ─────────────────────────────────── */}
-      <div style={{ marginTop: 24 }}>
-        <ChangePassword token={token} />
-      </div>
+        </div>
+      )}
 
       {/* ── DIRECT RESUME / CERTIFICATE RE-UPLOAD MODAL ── */}
       {showDirectUploadModal && ReactDOM.createPortal(
@@ -1829,8 +1960,9 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
             <div
               style={{
                 padding: '14px 22px',
-                background: 'linear-gradient(135deg, #0B192C 0%, #1E3E62 100%)',
-                color: '#FFFFFF',
+                background: '#FFFFFF',
+                borderBottom: '1px solid #E2E8F0',
+                color: '#0F172A',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -1839,7 +1971,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token }) => {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FileTextIcon size={20} color="#93C5FD" />
+                <FileTextIcon size={20} color="#2563EB" />
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
                     {previewDoc.title}

@@ -16,14 +16,11 @@ interface LoginProps {
 
 const PlacementHubLogo: React.FC = () => (
   <div className="flex flex-col items-center justify-center select-none text-center">
-    <div className="inline-flex items-center gap-2.5 mb-1.5">
-      <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
-        <span className="material-symbols-outlined text-[22px]">school</span>
-      </div>
-      <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
-        Placement<span className="text-indigo-600">Hub</span>
-      </span>
-    </div>
+    <img
+      src="/placementhub-horizontal.png"
+      alt="PlacementHub Logo"
+      className="h-12 sm:h-14 w-auto object-contain mb-2"
+    />
     <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
       Campus Recruitment & Career Portal
     </p>

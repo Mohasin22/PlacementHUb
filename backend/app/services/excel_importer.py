@@ -1,4 +1,5 @@
 import io
+import asyncio
 import re
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
@@ -284,39 +285,32 @@ async def resolve_hierarchy_batch_and_faculty(
     dept_id = str(matched_dept.get("id") or matched_dept["_id"]) if matched_dept else None
     resolved_dept_name = matched_dept.get("department_name") or matched_dept.get("name", dept_name) if matched_dept else dept_name
 
-    # 5. Resolve Existing Class Section (strictly map to existing classes created during registration)
+    # 5. Resolve Faculty Coordinator (mapped to this department/branch)
     class_id = None
     resolved_class_name = class_name
     faculty_id = None
     faculty_name = None
 
-    # Safety check: if all_classes is empty in memory, attempt DB fetch
-    if not all_classes and institution_id:
-        try:
-            all_classes = await db.db.classes.find({
-                "$or": [{"institution_id": institution_id}, {"institution_id": parse_id(institution_id)}]
-            }).to_list(length=1000)
-        except Exception:
-            all_classes = []
+    assigned_faculty = None
+    if dept_id:
+        assigned_faculty = next((f for f in all_faculty if str(f.get("department_id")) == dept_id or parse_id(str(f.get("department_id", ""))) == parse_id(dept_id)), None)
 
-    matched_cls = match_registered_class(class_name, dept_id, prog_id, all_classes)
-    if matched_cls:
-        class_id = str(matched_cls.get("id") or matched_cls["_id"])
-        resolved_class_name = matched_cls.get("class_name") or matched_cls.get("name") or class_name
+    # Optional legacy class fallback if existing class exists
+    if not assigned_faculty and all_classes:
+        matched_cls = match_registered_class(class_name, dept_id, prog_id, all_classes)
+        if matched_cls:
+            class_id = str(matched_cls.get("id") or matched_cls["_id"])
+            resolved_class_name = matched_cls.get("class_name") or matched_cls.get("name") or class_name
+            if matched_cls.get("faculty_coordinator_id"):
+                assigned_faculty = await db.db.users.find_one(id_query(matched_cls["faculty_coordinator_id"]))
+            if not assigned_faculty:
+                assigned_faculty = next((f for f in all_faculty if str(f.get("class_id")) == class_id or parse_id(str(f.get("class_id"))) == parse_id(class_id)), None)
 
-        # Resolve Faculty Coordinator mapped to this class
-        assigned_faculty = None
-        if matched_cls.get("faculty_coordinator_id"):
-            assigned_faculty = await db.db.users.find_one(id_query(matched_cls["faculty_coordinator_id"]))
-        if not assigned_faculty:
-            assigned_faculty = next((f for f in all_faculty if str(f.get("class_id")) == class_id or parse_id(str(f.get("class_id"))) == parse_id(class_id)), None)
-        if not assigned_faculty and dept_id:
-            assigned_faculty = next((f for f in all_faculty if str(f.get("department_id")) == dept_id or parse_id(str(f.get("department_id", ""))) == parse_id(dept_id)), None)
+    if assigned_faculty:
+        faculty_id = str(assigned_faculty["_id"])
+        faculty_name = assigned_faculty.get("name")
 
-        faculty_id = str(assigned_faculty["_id"]) if assigned_faculty else None
-        faculty_name = assigned_faculty.get("name") if assigned_faculty else None
-
-    is_mapped = bool(prog_id and dept_id and academic_batch_id and class_id and faculty_id and not batch_duration_mismatch)
+    is_mapped = bool(prog_id and dept_id and academic_batch_id and not batch_duration_mismatch)
 
     return {
         "program_id": prog_id,
@@ -349,39 +343,38 @@ async def process_excel_import(
     await ensure_default_board_rules()
     await ensure_default_academic_calendar(institution_id)
 
-    # Load workbook using openpyxl with pandas fallback
-    header_row = []
-    rows = []
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-        if "Student_Master_Upload" in wb.sheetnames:
-            ws = wb["Student_Master_Upload"]
-        else:
-            ws = wb.active
-            
-        data = list(ws.iter_rows(values_only=True))
-        if not data or len(data) < 2:
-            return {"success": False, "error": "Excel workbook is empty or contains no data rows."}
-            
-        header_row = [clean_cell_str(c) for c in data[0]]
-        rows = data[1:]
-    except Exception as e:
-        # Fallback to pandas read_excel / read_csv
+    def _parse_excel_bytes_sync(raw_bytes: bytes) -> Dict[str, Any]:
         try:
-            df = pd.read_excel(io.BytesIO(file_bytes))
-            if df.empty:
-                return {"success": False, "error": "Spreadsheet contains no data rows."}
-            header_row = [clean_cell_str(c) for c in df.columns]
-            rows = [tuple(r) for r in df.values]
-        except Exception:
+            wb = openpyxl.load_workbook(io.BytesIO(raw_bytes), data_only=True)
+            if "Student_Master_Upload" in wb.sheetnames:
+                ws = wb["Student_Master_Upload"]
+            else:
+                ws = wb.active
+            data = list(ws.iter_rows(values_only=True))
+            if not data or len(data) < 2:
+                return {"error": "Excel workbook is empty or contains no data rows."}
+            h_row = [clean_cell_str(c) for c in data[0]]
+            return {"header_row": h_row, "rows": data[1:]}
+        except Exception as e:
             try:
-                df = pd.read_csv(io.BytesIO(file_bytes))
+                df = pd.read_excel(io.BytesIO(raw_bytes))
                 if df.empty:
-                    return {"success": False, "error": "CSV file contains no data rows."}
-                header_row = [clean_cell_str(c) for c in df.columns]
-                rows = [tuple(r) for r in df.values]
-            except Exception as e_inner:
-                return {"success": False, "error": f"Failed to parse Excel file: {str(e)}"}
+                    return {"error": "Spreadsheet contains no data rows."}
+                return {"header_row": [clean_cell_str(c) for c in df.columns], "rows": [tuple(r) for r in df.values]}
+            except Exception:
+                try:
+                    df = pd.read_csv(io.BytesIO(raw_bytes))
+                    if df.empty:
+                        return {"error": "CSV file contains no data rows."}
+                    return {"header_row": [clean_cell_str(c) for c in df.columns], "rows": [tuple(r) for r in df.values]}
+                except Exception:
+                    return {"error": f"Failed to parse Excel file: {str(e)}"}
+
+    parsed_result = await asyncio.to_thread(_parse_excel_bytes_sync, file_bytes)
+    if "error" in parsed_result:
+        return {"success": False, "error": parsed_result["error"]}
+    header_row = parsed_result["header_row"]
+    rows = parsed_result["rows"]
 
     # Load existing hierarchy from MongoDB
     all_programs = await db.db.programs.find({"$or": [{"institution_id": institution_id}, {"institution_id": parse_id(institution_id)}]}).to_list(length=200)
@@ -531,9 +524,7 @@ async def process_excel_import(
             unknown_dept_count += 1
             row_issues.append(f"Could not resolve department '{dept_name}'")
 
-        if not hierarchy_res["class_id"]:
-            unknown_class_count += 1
-            row_issues.append(f"Could not resolve class '{class_name}'. Please ensure this class was created during institute registration.")
+        # Classes / sections are no longer required - students are mapped directly to branch/department
 
         # 5. Demographics
         dob = get_val(row, "Date of Birth", "DOB")
@@ -763,16 +754,18 @@ async def process_excel_import(
                 )
             ),
             authentication=AuthenticationState(
-                account_status="IMPORTED_PENDING_FACULTY",
+                account_status="READY_FOR_FIRST_LOGIN",
                 first_login_completed=False,
                 password_set=False,
                 verified_institutional_email=False,
                 verified_personal_email=False
             ),
             approval=ApprovalState(
-                faculty_status="PENDING" if (hierarchy_res["is_mapped"] and not hierarchy_res["batch_duration_mismatch"]) else "MAPPING_REVIEW",
+                faculty_status="APPROVED",
                 faculty_id=hierarchy_res["faculty_id"],
-                faculty_name=hierarchy_res["faculty_name"]
+                faculty_name=hierarchy_res["faculty_name"],
+                approved_at=now_utc.isoformat(),
+                approved_by=imported_by_user_id or "BULK_IMPORT"
             ),
             import_metadata=ImportMetadata(
                 source_file=source_filename,
@@ -842,6 +835,24 @@ async def process_excel_import(
                     source="excel_import",
                     source_details={"source_file": source_filename, "batch_id": batch_id}
                 )
+            # Preserve existing login credentials and active status if student already exists
+            if existing_student_doc:
+                existing_auth = existing_student_doc.get("authentication", {})
+                existing_pw = existing_auth.get("password_hash") or existing_student_doc.get("password_hash")
+                if existing_pw:
+                    mongo_doc["authentication"]["password_hash"] = existing_pw
+                    mongo_doc["authentication"]["password_set"] = True
+                    mongo_doc["password_hash"] = existing_pw
+                if existing_auth.get("first_login_completed"):
+                    mongo_doc["authentication"]["first_login_completed"] = True
+                if existing_auth.get("account_status") == "ACTIVE":
+                    mongo_doc["authentication"]["account_status"] = "ACTIVE"
+                existing_approval = existing_student_doc.get("approval", {})
+                if existing_approval.get("faculty_status") in ["APPROVED", "REJECTED", "CHANGES_REQUESTED"]:
+                    mongo_doc["approval"]["faculty_status"] = existing_approval.get("faculty_status")
+                    if existing_approval.get("rejection_reason"):
+                        mongo_doc["approval"]["rejection_reason"] = existing_approval.get("rejection_reason")
+
             res = await db.db.students.update_one(filter_query, {"$set": mongo_doc}, upsert=True)
             if res.upserted_id:
                 inserted_count += 1
