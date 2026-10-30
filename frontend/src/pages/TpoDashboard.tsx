@@ -11,6 +11,8 @@ import {
   UploadIcon,
   PlusIcon,
   CheckIcon,
+  CheckCircleIcon,
+  RefreshIcon,
   AlertIcon,
   StarIcon,
   AwardIcon,
@@ -182,6 +184,25 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
   useEffect(() => { if (tab === 'faculty') loadFaculty(); }, [tab, loadFaculty]);
 
+  // ── Pending Student Profile Updates for TPO ──
+  const [studentSubTab, setStudentSubTab] = useState<'directory' | 'updates'>('directory');
+  const [pendingUpdates, setPendingUpdates] = useState<any[]>([]);
+  const [updatesLoading, setUpdatesLoading] = useState(false);
+  const [updatesSearchQuery, setUpdatesSearchQuery] = useState('');
+  const [actionInProgressId, setActionInProgressId] = useState<string | null>(null);
+
+  const loadPendingUpdates = useCallback(async () => {
+    setUpdatesLoading(true);
+    try {
+      const res = await fetch(`${API}/tpo/reviews/updates`, { headers: h });
+      if (res.ok) setPendingUpdates(await res.json());
+    } catch (err) {
+      console.error('Failed to load pending updates:', err);
+    } finally {
+      setUpdatesLoading(false);
+    }
+  }, [token]);
+
   const loadStudents = useCallback(async () => {
     setStudentsLoading(true);
     try {
@@ -190,7 +211,47 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     } finally { setStudentsLoading(false); }
   }, [token]);
 
-  useEffect(() => { if (tab === 'students') loadStudents(); }, [tab, loadStudents]);
+  useEffect(() => {
+    if (tab === 'students') {
+      loadStudents();
+      loadPendingUpdates();
+    }
+  }, [tab, loadStudents, loadPendingUpdates]);
+
+  const handleApproveUpdate = async (id: string) => {
+    setActionInProgressId(id);
+    try {
+      const res = await fetch(`${API}/tpo/reviews/updates/${id}/approve`, {
+        method: 'POST',
+        headers: h,
+      });
+      if (!res.ok) throw new Error('Failed to merge profile updates.');
+      flash('Profile updates merged successfully!');
+      await loadPendingUpdates();
+      await loadStudents();
+    } catch (err: any) {
+      flash(err.message || 'Error approving update', true);
+    } finally {
+      setActionInProgressId(null);
+    }
+  };
+
+  const handleRejectUpdate = async (id: string) => {
+    setActionInProgressId(id);
+    try {
+      const res = await fetch(`${API}/tpo/reviews/updates/${id}/reject`, {
+        method: 'POST',
+        headers: h,
+      });
+      if (!res.ok) throw new Error('Failed to reject profile changes.');
+      flash('Profile updates rejected.');
+      await loadPendingUpdates();
+    } catch (err: any) {
+      flash(err.message || 'Error rejecting update', true);
+    } finally {
+      setActionInProgressId(null);
+    }
+  };
 
 
   const loadApplicants = async (driveId: string) => {
@@ -1675,69 +1736,341 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
       )}
 
 
-      {/* ── STUDENTS DIRECTORY & HIERARCHICAL NAV ── */}
+      {/* ── STUDENTS DIRECTORY & PROFILE CHANGE REQUESTS ── */}
       {tab === 'students' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {showBulkUpload && (
-            <div style={s.formCard}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    Bulk Student Master Upload
-                  </h3>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    Upload Excel sheets conforming to the standard canonical template.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowBulkUpload(false)}
+          {/* Sub Navigation Bar for Students Tab */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
+            <div style={{ display: 'inline-flex', background: 'var(--card-bg, #FFFFFF)', padding: 4, borderRadius: 10, border: '1px solid var(--border-color)', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => setStudentSubTab('directory')}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: studentSubTab === 'directory' ? '#2563EB' : 'transparent',
+                  color: studentSubTab === 'directory' ? '#FFFFFF' : 'var(--text-secondary)',
+                  fontWeight: studentSubTab === 'directory' ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <UsersIcon size={16} />
+                <span>Student Directory</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStudentSubTab('updates');
+                  loadPendingUpdates();
+                }}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: studentSubTab === 'updates' ? '#2563EB' : 'transparent',
+                  color: studentSubTab === 'updates' ? '#FFFFFF' : 'var(--text-secondary)',
+                  fontWeight: studentSubTab === 'updates' ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <CheckCircleIcon size={16} />
+                <span>Profile Change Requests</span>
+                {pendingUpdates.length > 0 && (
+                  <span
+                    style={{
+                      background: studentSubTab === 'updates' ? '#FFFFFF' : '#EF4444',
+                      color: studentSubTab === 'updates' ? '#2563EB' : '#FFFFFF',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: 12,
+                    }}
+                  >
+                    {pendingUpdates.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {studentSubTab === 'updates' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="text"
+                  placeholder="Filter by Name or Roll No..."
+                  value={updatesSearchQuery}
+                  onChange={(e) => setUpdatesSearchQuery(e.target.value)}
                   style={{
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
+                    padding: '8px 12px',
                     borderRadius: 8,
-                    padding: '6px 12px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    minWidth: 240,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={loadPendingUpdates}
+                  disabled={updatesLoading}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--input-bg)',
                     color: 'var(--text-secondary)',
                     cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    display: 'inline-flex',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    display: 'flex',
                     alignItems: 'center',
                     gap: 6,
                   }}
                 >
-                  <CloseIcon size={14} />
-                  <span>Close</span>
+                  <RefreshIcon size={14} />
+                  <span>{updatesLoading ? 'Syncing...' : 'Refresh'}</span>
                 </button>
               </div>
-              <BulkStudentUpload
-                token={token}
-                institutionId={institutionId}
-                apiUrl={API}
-                onUploadSuccess={() => {
-                  flash('Bulk student data uploaded successfully!');
-                  loadStudents();
-                  loadHierarchy();
-                }}
-              />
-            </div>
-          )}
+            )}
+          </div>
 
-          {studentsLoading ? (
-            <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
-              <Loader color="#3B82F6" />
-            </div>
+          {studentSubTab === 'directory' ? (
+            <>
+              {showBulkUpload && (
+                <div style={s.formCard}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        Bulk Student Master Upload
+                      </h3>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        Upload Excel sheets conforming to the standard canonical template.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowBulkUpload(false)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 8,
+                        padding: '6px 12px',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <CloseIcon size={14} />
+                      <span>Close</span>
+                    </button>
+                  </div>
+                  <BulkStudentUpload
+                    token={token}
+                    institutionId={institutionId}
+                    apiUrl={API}
+                    onUploadSuccess={() => {
+                      flash('Bulk student data uploaded successfully!');
+                      loadStudents();
+                      loadHierarchy();
+                    }}
+                  />
+                </div>
+              )}
+
+              {studentsLoading ? (
+                <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
+                  <Loader color="#3B82F6" />
+                </div>
+              ) : (
+                <TpoStudentHierarchyView
+                  students={students}
+                  hierarchy={hierarchy}
+                  programName={_tpoProgramName || 'All Programs'}
+                  onRefresh={() => {
+                    loadStudents();
+                    loadHierarchy();
+                    flash('Students & hierarchy refreshed!');
+                  }}
+                  onShowBulkUpload={() => setShowBulkUpload(!showBulkUpload)}
+                  showBulkUpload={showBulkUpload}
+                />
+              )}
+            </>
           ) : (
-            <TpoStudentHierarchyView
-              students={students}
-              hierarchy={hierarchy}
-              programName={_tpoProgramName || 'All Programs'}
-              onRefresh={() => {
-                loadStudents();
-                loadHierarchy();
-                flash('Students & hierarchy refreshed!');
-              }}
-              onShowBulkUpload={() => setShowBulkUpload(!showBulkUpload)}
-              showBulkUpload={showBulkUpload}
-            />
+            /* ── TPO PENDING PROFILE UPDATE REQUESTS ── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Student Profile Update Requests
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Review, approve, or reject field modifications submitted by students.
+                  </p>
+                </div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#3B82F6' }}>
+                  {pendingUpdates.length} Pending
+                </div>
+              </div>
+
+              {updatesLoading ? (
+                <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
+                  <Loader color="#3B82F6" />
+                </div>
+              ) : pendingUpdates.filter(u =>
+                  (u.roll_number?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase()) ||
+                  (u.student_name?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase())
+                ).length === 0 ? (
+                <div
+                  style={{
+                    padding: '48px 24px',
+                    textAlign: 'center',
+                    background: 'var(--card-bg, #FFFFFF)',
+                    borderRadius: 16,
+                    border: '1px dashed var(--border-color)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <div style={{ fontSize: '1.8rem', marginBottom: 8 }}>✓</div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                    No Pending Profile Changes
+                  </div>
+                  <div style={{ fontSize: '0.85rem', marginTop: 4 }}>
+                    {updatesSearchQuery ? 'No change requests match your search criteria.' : 'All student profiles are up to date! New modification requests will appear here.'}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: 16 }}>
+                  {pendingUpdates
+                    .filter(u =>
+                      (u.roll_number?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase()) ||
+                      (u.student_name?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase())
+                    )
+                    .map((upd) => (
+                      <div
+                        key={upd.id}
+                        style={{
+                          background: 'var(--card-bg, #FFFFFF)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 16,
+                          padding: 20,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: 16,
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                            <div>
+                              <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                {upd.student_name}
+                              </h4>
+                              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                                Roll: <strong style={{ color: 'var(--text-primary)' }}>{upd.roll_number}</strong>
+                                {upd.department_id && ` • Dept: ${upd.department_id}`}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--input-bg)', padding: '3px 8px', borderRadius: 6 }}>
+                              {upd.requested_at ? new Date(upd.requested_at).toLocaleDateString() : 'Pending'}
+                            </span>
+                          </div>
+
+                          <div style={{ background: 'var(--input-bg)', border: '1px solid var(--border-color)', borderRadius: 10, padding: 12 }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                              Requested Field Modifications
+                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>
+                                  <th style={{ padding: '4px 8px' }}>Field</th>
+                                  <th style={{ padding: '4px 8px' }}>Current</th>
+                                  <th style={{ padding: '4px 8px' }}>Proposed</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.keys(upd.requested_changes || {}).map((key) => (
+                                  <tr key={key} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                      {key.replace(/_/g, ' ').toUpperCase()}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', color: '#EF4444', textDecoration: 'line-through' }}>
+                                      {Array.isArray(upd.current_state?.[key])
+                                        ? upd.current_state[key].join(', ')
+                                        : String(upd.current_state?.[key] ?? '—')}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', color: '#10B981', fontWeight: 700 }}>
+                                      {Array.isArray(upd.requested_changes[key])
+                                        ? upd.requested_changes[key].join(', ')
+                                        : String(upd.requested_changes[key])}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border-color)' }}>
+                          <button
+                            type="button"
+                            disabled={actionInProgressId === upd.id}
+                            onClick={() => handleRejectUpdate(upd.id)}
+                            style={{
+                              padding: '7px 16px',
+                              borderRadius: 8,
+                              border: '1.5px solid #EF4444',
+                              background: 'transparent',
+                              color: '#EF4444',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              cursor: actionInProgressId === upd.id ? 'not-allowed' : 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            Reject Changes
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionInProgressId === upd.id}
+                            onClick={() => handleApproveUpdate(upd.id)}
+                            style={{
+                              padding: '7px 20px',
+                              borderRadius: 8,
+                              border: 'none',
+                              background: '#10B981',
+                              color: '#FFFFFF',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              cursor: actionInProgressId === upd.id ? 'not-allowed' : 'pointer',
+                              boxShadow: '0 2px 8px rgba(16,185,129,0.3)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {actionInProgressId === upd.id ? 'Merging...' : 'Merge Updates'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

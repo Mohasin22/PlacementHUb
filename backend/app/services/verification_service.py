@@ -118,7 +118,7 @@ def get_verification_status(student: Optional[Dict[str, Any]]) -> Dict[str, Any]
     if not linkedin_connected:
         missing.append("linkedin")
 
-    drives_unlocked = (github_connected and linkedin_connected)
+    drives_unlocked = True  # GitHub/LinkedIn verification is optional and no longer gates drives
 
     return {
         "github": {
@@ -652,48 +652,7 @@ async def require_professional_verification(
         return current_user
 
     if user_role == "Student":
-        student_id = current_user["user_id"]
-        student = await get_student_for_user(student_id, current_user.get("email"))
-
-        if not student:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Student profile not found."
-            )
-
-        status_info = get_verification_status(student)
-
-        if not status_info["drives_unlocked"]:
-            institution_id = current_user.get("institution_id")
-            await log_audit_event(
-                action="drive_access_denied_unverified",
-                actor=current_user.get("email", student_id),
-                actor_role="Student",
-                entity_type="Student",
-                entity_id=student_id,
-                institution_id=institution_id or "unknown",
-                details={"missing": status_info["missing_verifications"]}
-            )
-
-            missing_names = [m.title() for m in status_info["missing_verifications"]]
-            message = (
-                f"Professional Account Verification Required: Connect both GitHub and LinkedIn "
-                f"to access placement drives. Missing: {', '.join(missing_names)}."
-            )
-
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "PROFESSIONAL_VERIFICATION_REQUIRED",
-                    "message": message,
-                    "missing_verifications": status_info["missing_verifications"],
-                    "verification_status": {
-                        "github": status_info["github"],
-                        "linkedin": status_info["linkedin"],
-                    }
-                }
-            )
-
+        # Verification requirement has been removed; all students can access drives immediately
         return current_user
 
     raise HTTPException(

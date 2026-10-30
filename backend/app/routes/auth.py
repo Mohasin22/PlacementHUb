@@ -67,11 +67,8 @@ async def login(request: Request, payload: LoginRequest):
             faculty_status = student.get("approval", {}).get("faculty_status") or student.get("status")
             account_status = student.get("authentication", {}).get("account_status")
             
-            if faculty_status == "PENDING" or account_status == "IMPORTED_PENDING_FACULTY":
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Your registration has been imported and is currently pending Faculty Coordinator approval. You can log in once approved."
-                )
+            # First-time faculty verification is not required for bulk-uploaded students; they can log in directly.
+            # Only accounts explicitly rejected by faculty or suspended remain blocked:
             if faculty_status == "REJECTED" or account_status == "SUSPENDED":
                 reason = student.get("approval", {}).get("rejection_reason") or "Details could not be verified."
                 raise HTTPException(
@@ -174,11 +171,8 @@ async def request_otp(request: Request, payload: OTPRequest):
             faculty_status = student.get("approval", {}).get("faculty_status") or student.get("status")
             account_status = student.get("authentication", {}).get("account_status")
             
-            if faculty_status == "PENDING" or account_status == "IMPORTED_PENDING_FACULTY":
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Your registration is currently pending Faculty Coordinator approval. You will be able to activate your account once approved."
-                )
+            # First-time faculty verification is not required for bulk-uploaded students; they can log in directly.
+            # Only accounts explicitly rejected by faculty or suspended remain blocked:
             if faculty_status == "REJECTED" or account_status == "SUSPENDED":
                 reason = student.get("approval", {}).get("rejection_reason") or "Details could not be verified."
                 raise HTTPException(

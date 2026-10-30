@@ -434,7 +434,7 @@ export default function App() {
                     {currentTab === 'verification' && (
                       <StudentProfile
                         token={auth.token}
-                        defaultTab="verification"
+                        defaultTab="basic"
                         onNavigateToDrives={() => setCurrentTab('drives')}
                       />
                     )}
@@ -449,14 +449,14 @@ export default function App() {
                       <StudentDrives
                         token={auth.token}
                         activeTab="drives"
-                        onNavigateToVerification={() => setCurrentTab('verification')}
+                        onNavigateToVerification={() => setCurrentTab('profile')}
                       />
                     )}
                     {currentTab === 'events' && (
                       <StudentDrives
                         token={auth.token}
                         activeTab="events"
-                        onNavigateToVerification={() => setCurrentTab('verification')}
+                        onNavigateToVerification={() => setCurrentTab('profile')}
                       />
                     )}
                   </div>

@@ -1338,3 +1338,66 @@ async def remove_tpo_faculty(
 
     return {"message": f"Faculty Coordinator '{faculty.get('name')}' removed successfully."}
 
+# ── Student Profile Update Reviews for TPO ────────────────────────────────────
+
+@router.get("/reviews/updates", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def get_tpo_pending_profile_updates(
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Returns all pending student profile updates for TPO review."""
+    updates_cursor = db.db.student_pending_updates.find({
+        "institution_id": institution_id,
+        "status": "pending"
+    }).sort("requested_at", -1)
+    updates = await updates_cursor.to_list(length=1000)
+    for upd in updates:
+        upd["id"] = str(upd["_id"])
+        del upd["_id"]
+    return updates
+
+@router.post("/reviews/updates/{update_id}/approve", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def approve_student_profile_update(
+    update_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """TPO approves and merges student profile updates into canonical student record."""
+    update = await db.db.student_pending_updates.find_one(id_query(update_id))
+    if not update:
+        raise HTTPException(status_code=404, detail="Update request not found.")
+        
+    student_id = update["student_id"]
+    await db.db.students.update_one(id_query(student_id), {"$set": update["requested_changes"]})
+    await db.db.student_pending_updates.delete_one(id_query(update_id))
+
+    await log_audit_event(
+        action="tpo_approved_student_profile_update",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="StudentPendingUpdate",
+        entity_id=update_id,
+        institution_id=institution_id,
+        details={"student_id": student_id, "changes": update["requested_changes"]}
+    )
+    return {"message": "Student profile updates applied successfully by TPO."}
+
+@router.post("/reviews/updates/{update_id}/reject", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def reject_student_profile_update(
+    update_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """TPO rejects student profile updates."""
+    await db.db.student_pending_updates.delete_one(id_query(update_id))
+
+    await log_audit_event(
+        action="tpo_rejected_student_profile_update",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="StudentPendingUpdate",
+        entity_id=update_id,
+        institution_id=institution_id
+    )
+    return {"message": "Student profile updates rejected by TPO."}
+

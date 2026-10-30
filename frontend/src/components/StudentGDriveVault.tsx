@@ -11,6 +11,9 @@ import {
   CloseIcon,
   ExternalLinkIcon,
   ClockIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  FileTextIcon,
 } from './Icons';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
@@ -69,10 +72,29 @@ export interface GDriveVaultData {
 
 interface StudentGDriveVaultProps {
   token: string;
-  studentId?: string; // If provided, fetches for specific student (Staff Mode)
-  isStaffMode?: boolean; // If true, enabled for TPO/Faculty
+  studentId?: string;
+  isStaffMode?: boolean;
   studentProfile?: any;
 }
+
+const CHECKLIST_SUBDIVISIONS = [
+  { value: 'ALL', label: 'All Subdivisions' },
+  { value: 'Academic', label: 'Academic Credentials (10th, 12th, UG)' },
+  { value: 'Experience', label: 'Work Experience & Internships' },
+  { value: 'Skills', label: 'Technical Skills & Courses' },
+  { value: 'Documents', label: 'Official Resume & Identity' },
+];
+
+const FILE_TYPE_OPTIONS = [
+  { value: 'ALL', label: 'All Document Types' },
+  { value: '10th_marksheet', label: '10th / Secondary Marksheet' },
+  { value: '12th_marksheet', label: '12th / Diploma Marksheet' },
+  { value: 'ug_marksheet', label: 'UG Semester Transcripts' },
+  { value: 'internship_cert', label: 'Internship Certificates' },
+  { value: 'technical_cert', label: 'Technical Certifications' },
+  { value: 'resume', label: 'Placement Resume / CV' },
+  { value: 'other', label: 'Other Supporting Documents' },
+];
 
 export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
   token,
@@ -88,24 +110,47 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Connection form state
+  // Collapsible Subdivisions State
+  const [openSubdivisions, setOpenSubdivisions] = useState<Record<string, boolean>>({
+    folder: true,
+    verification: true,
+    checklist: true,
+    files: true,
+  });
+
+  const toggleSubdivision = (key: string) => {
+    setOpenSubdivisions((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const allOpen = Object.values(openSubdivisions).every(Boolean);
+  const toggleAllSubdivisions = () => {
+    const nextState = !allOpen;
+    setOpenSubdivisions({
+      folder: nextState,
+      verification: nextState,
+      checklist: nextState,
+      files: nextState,
+    });
+  };
+
+  // Sub-division filter for checklist & files
+  const [checklistSubdivision, setChecklistSubdivision] = useState<string>('ALL');
+  const [fileSubdivision, setFileSubdivision] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'VERIFIED' | 'MISMATCH' | 'MISSING'>('ALL');
+
+  // Modals state
   const [folderInputUrl, setFolderInputUrl] = useState('');
   const [folderNameInput, setFolderNameInput] = useState('PLACEMENT');
   const [showConnectModal, setShowConnectModal] = useState(false);
 
-  // Add document modal state
   const [showAddFileModal, setShowAddFileModal] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [newDocType, setNewDocType] = useState('10th_marksheet');
   const [newFileUrl, setNewFileUrl] = useState('');
-  const [newFileSize, setNewFileSize] = useState('1.5 MB');
+  const [newFileSize] = useState('1.5 MB');
 
-  // Preview modal
   const [previewFile, setPreviewFile] = useState<DriveFileItem | null>(null);
   const [showEmbeddedBrowser, setShowEmbeddedBrowser] = useState(false);
-
-  // Checklist filter
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'VERIFIED' | 'MISMATCH' | 'MISSING'>('ALL');
 
   const fetchEndpoint = studentId
     ? `${API_BASE}/students/gdrive-vault/${studentId}`
@@ -119,10 +164,10 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Failed to load Google Drive PLACEMENT Vault.');
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to fetch Google Drive Vault data.');
       }
-      const data = await res.json();
+      const data: GDriveVaultData = await res.json();
       setVault(data);
       if (data.folder_url) {
         setFolderInputUrl(data.folder_url);
@@ -138,7 +183,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
     fetchVault();
   }, [fetchVault]);
 
-  // Handle Connect Folder
+  // Connect Folder
   const handleConnectFolder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!folderInputUrl.trim()) {
@@ -164,8 +209,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
       if (!res.ok) throw new Error(data.detail || 'Could not connect Google Drive folder.');
       setVault(data.vault);
       setShowConnectModal(false);
-      setSuccessMsg('Google Drive "PLACEMENT" folder connected successfully! Running AI verification...');
-      // Trigger AI verification right away
+      setSuccessMsg('Google Drive folder connected successfully!');
       handleRunAiVerification();
     } catch (e: any) {
       setError(e.message);
@@ -174,7 +218,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
     }
   };
 
-  // One-click Demo Population
+  // Load Demo Folder
   const handleLoadDemoFolder = async () => {
     setIsPopulatingDemo(true);
     setError(null);
@@ -187,7 +231,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to load demo folder.');
       setVault(data.vault);
-      setSuccessMsg('Demo "PLACEMENT" folder loaded with realistic certificates and cross-verified by AI!');
+      setSuccessMsg('Demo PLACEMENT folder loaded and verified!');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -195,7 +239,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
     }
   };
 
-  // Run AI Cross-Verification
+  // Run AI Verification
   const handleRunAiVerification = async () => {
     setIsVerifying(true);
     setError(null);
@@ -210,9 +254,9 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'AI Cross-Verification failed.');
+      if (!res.ok) throw new Error(data.detail || 'AI Verification failed.');
       setVault(data.vault);
-      setSuccessMsg('AI Cross-Verification completed! Discrepancies and matches updated below.');
+      setSuccessMsg('AI Verification completed!');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -220,7 +264,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
     }
   };
 
-  // Toggle Checkbox
+  // Toggle Checklist Checkbox
   const handleToggleChecklist = async (item: ChecklistItem) => {
     const newChecked = !item.is_checked;
     const checklistEndpoint = studentId
@@ -228,7 +272,6 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
       : `${API_BASE}/students/gdrive-vault/checklist-item`;
 
     try {
-      // Optimistic update
       setVault((prev) => {
         if (!prev || !prev.verification_report) return prev;
         const updatedList = prev.verification_report.checklist.map((it) =>
@@ -274,7 +317,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
     }
   };
 
-  // Add File manually to vault registry
+  // Add File
   const handleAddFile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFileName.trim()) return;
@@ -298,7 +341,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
       setShowAddFileModal(false);
       setNewFileName('');
       setNewFileUrl('');
-      setSuccessMsg('Document successfully added to PLACEMENT folder vault.');
+      setSuccessMsg('Document registered successfully.');
     } catch (e: any) {
       setError(e.message);
     }
@@ -306,7 +349,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
 
   // Remove File
   const handleRemoveFile = async (fileId: string) => {
-    if (!confirm('Are you sure you want to remove this document from the portal vault?')) return;
+    if (!confirm('Are you sure you want to remove this document?')) return;
     try {
       const res = await fetch(`${API_BASE}/students/gdrive-vault/files/${fileId}`, {
         method: 'DELETE',
@@ -324,11 +367,27 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
   const report = vault?.verification_report;
   const checklist = report?.checklist || [];
 
+  // Filter Checklist items by Status & Category Subdivision
   const filteredChecklist = checklist.filter((item) => {
-    if (filterStatus === 'VERIFIED') return item.status === 'VERIFIED_MATCH';
-    if (filterStatus === 'MISMATCH') return item.status === 'MISMATCH';
-    if (filterStatus === 'MISSING') return item.status === 'MISSING';
+    if (filterStatus === 'VERIFIED' && item.status !== 'VERIFIED_MATCH') return false;
+    if (filterStatus === 'MISMATCH' && item.status !== 'MISMATCH') return false;
+    if (filterStatus === 'MISSING' && item.status !== 'MISSING') return false;
+
+    if (checklistSubdivision !== 'ALL') {
+      const cat = (item.category || '').toLowerCase();
+      const target = checklistSubdivision.toLowerCase();
+      if (!cat.includes(target) && !target.includes(cat)) {
+        return false;
+      }
+    }
     return true;
+  });
+
+  // Filter Files by Document Type Subdivision
+  const files = vault?.files || [];
+  const filteredFiles = files.filter((file) => {
+    if (fileSubdivision === 'ALL') return true;
+    return file.doc_type === fileSubdivision;
   });
 
   const getStatusBadge = (status: string) => {
@@ -337,80 +396,80 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
         return (
           <span
             style={{
-              background: 'rgba(34,197,94,0.15)',
+              background: 'rgba(34,197,94,0.12)',
               color: '#16A34A',
-              border: '1px solid rgba(34,197,94,0.3)',
-              padding: '4px 10px',
-              borderRadius: 20,
-              fontSize: '0.75rem',
+              border: '1px solid rgba(34,197,94,0.25)',
+              padding: '3px 8px',
+              borderRadius: 14,
+              fontSize: '0.74rem',
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
             }}
           >
-            <CheckCircleIcon size={13} color="#16A34A" />
-            Verified & Matches Profile
+            <CheckCircleIcon size={12} color="#16A34A" />
+            Verified
           </span>
         );
       case 'MISMATCH':
         return (
           <span
             style={{
-              background: 'rgba(245,158,11,0.15)',
+              background: 'rgba(245,158,11,0.12)',
               color: '#D97706',
-              border: '1px solid rgba(245,158,11,0.3)',
-              padding: '4px 10px',
-              borderRadius: 20,
-              fontSize: '0.75rem',
+              border: '1px solid rgba(245,158,11,0.25)',
+              padding: '3px 8px',
+              borderRadius: 14,
+              fontSize: '0.74rem',
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
             }}
           >
-            <AlertCircleIcon size={13} color="#D97706" />
-            Mismatch Detected
+            <AlertCircleIcon size={12} color="#D97706" />
+            Mismatch
           </span>
         );
       case 'MISSING':
         return (
           <span
             style={{
-              background: 'rgba(239,68,68,0.15)',
+              background: 'rgba(239,68,68,0.12)',
               color: '#DC2626',
-              border: '1px solid rgba(239,68,68,0.3)',
-              padding: '4px 10px',
-              borderRadius: 20,
-              fontSize: '0.75rem',
+              border: '1px solid rgba(239,68,68,0.25)',
+              padding: '3px 8px',
+              borderRadius: 14,
+              fontSize: '0.74rem',
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
             }}
           >
-            <CloseIcon size={12} color="#DC2626" />
-            Missing from Drive
+            <CloseIcon size={11} color="#DC2626" />
+            Missing
           </span>
         );
       default:
         return (
           <span
             style={{
-              background: 'rgba(100,116,139,0.15)',
+              background: 'rgba(100,116,139,0.12)',
               color: '#64748B',
-              border: '1px solid rgba(100,116,139,0.3)',
-              padding: '4px 10px',
-              borderRadius: 20,
-              fontSize: '0.75rem',
+              border: '1px solid rgba(100,116,139,0.25)',
+              padding: '3px 8px',
+              borderRadius: 14,
+              fontSize: '0.74rem',
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
             }}
           >
-            <ClockIcon size={13} color="#64748B" />
-            Pending Review
+            <ClockIcon size={12} color="#64748B" />
+            Pending
           </span>
         );
     }
@@ -425,38 +484,38 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
         <RefreshIcon size={24} style={{ animation: 'spin 1s linear infinite' }} />
-        <div style={{ marginTop: 12, fontWeight: 600 }}>Loading Google Drive PLACEMENT Vault...</div>
+        <div style={{ marginTop: 12, fontWeight: 600 }}>Loading Google Drive Vault...</div>
       </div>
     );
   }
 
   return (
-    <div className="gdrive-vault-container" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── TOP NOTIFICATION BANNERS ── */}
+    <div className="gdrive-vault-container" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Toast Alerts */}
       {successMsg && (
         <div
           style={{
-            background: 'rgba(16,185,129,0.12)',
+            background: 'rgba(16,185,129,0.1)',
             border: '1px solid rgba(16,185,129,0.3)',
-            borderRadius: 12,
-            padding: '12px 18px',
+            borderRadius: 10,
+            padding: '10px 16px',
             color: '#059669',
-            fontSize: '0.88rem',
+            fontSize: '0.84rem',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CheckCircleIcon size={18} color="#059669" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CheckCircleIcon size={16} color="#059669" />
             <span>{successMsg}</span>
           </div>
           <button
             onClick={() => setSuccessMsg(null)}
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#059669' }}
           >
-            <CloseIcon size={14} />
+            <CloseIcon size={13} />
           </button>
         </div>
       )}
@@ -466,843 +525,884 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
           style={{
             background: 'rgba(239,68,68,0.1)',
             border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: 12,
-            padding: '12px 18px',
+            borderRadius: 10,
+            padding: '10px 16px',
             color: '#DC2626',
-            fontSize: '0.88rem',
+            fontSize: '0.84rem',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <AlertCircleIcon size={18} color="#DC2626" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertCircleIcon size={16} color="#DC2626" />
             <span>{error}</span>
           </div>
           <button
             onClick={() => setError(null)}
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#DC2626' }}
           >
-            <CloseIcon size={14} />
+            <CloseIcon size={13} />
           </button>
         </div>
       )}
 
-      {/* ── SECTION 1: HERO HEADER & SETUP INSTRUCTIONS ── */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #0B192C 0%, #1E3E62 100%)',
-          borderRadius: 20,
-          padding: '28px 32px',
-          color: '#FFFFFF',
-          boxShadow: '0 8px 24px rgba(11,25,44,0.25)',
-          position: 'relative',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 20 }}>
-          <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
-            <div
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 16,
-                background: 'rgba(255,255,255,0.12)',
-                border: '1px solid rgba(255,255,255,0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              }}
-            >
-              <GoogleDriveIcon size={36} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800 }}>
-                  Google Drive "PLACEMENT" Folder Vault
-                </h2>
-                <span
-                  style={{
-                    background: vault?.is_connected ? 'rgba(34,197,94,0.25)' : 'rgba(245,158,11,0.25)',
-                    color: vault?.is_connected ? '#86EFAC' : '#FDE68A',
-                    border: `1px solid ${vault?.is_connected ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`,
-                    padding: '3px 10px',
-                    borderRadius: 20,
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: '50%',
-                      background: vault?.is_connected ? '#22C55E' : '#F59E0B',
-                    }}
-                  />
-                  {vault?.is_connected ? 'FOLDER CONNECTED & ACCESSIBLE' : 'NOT CONNECTED'}
-                </span>
-                {studentProfile && (studentProfile.name || studentProfile.roll_number) && (
-                  <span
-                    style={{
-                      background: 'rgba(255,255,255,0.15)',
-                      color: '#E0F2FE',
-                      padding: '3px 10px',
-                      borderRadius: 20,
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    👤 {studentProfile.name || 'Student'} ({studentProfile.roll_number || studentProfile.student_id})
-                  </span>
-                )}
-              </div>
-              <p style={{ margin: '6px 0 0', opacity: 0.88, fontSize: '0.85rem' }}>
-                Students upload marksheets, certificates, and resumes to their Google Drive folder named{' '}
-                <strong style={{ color: '#93C5FD' }}>PLACEMENT</strong>. Portal AI scans & cross-verifies details with student profile.
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {!isStaffMode && !vault?.is_connected && (
-              <button
-                type="button"
-                onClick={handleLoadDemoFolder}
-                disabled={isPopulatingDemo}
-                style={{
-                  background: 'rgba(255,255,255,0.15)',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  color: '#FFFFFF',
-                  padding: '9px 18px',
-                  borderRadius: 10,
-                  fontSize: '0.84rem',
-                  fontWeight: 700,
-                  cursor: isPopulatingDemo ? 'wait' : 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <SparklesIcon size={15} color="#FDE047" />
-                <span>{isPopulatingDemo ? 'Loading Sample...' : 'Try Demo "PLACEMENT" Folder'}</span>
-              </button>
-            )}
-
-            {!isStaffMode && (
-              <button
-                type="button"
-                onClick={() => setShowConnectModal(true)}
-                style={{
-                  background: '#2563EB',
-                  border: 'none',
-                  color: '#FFFFFF',
-                  padding: '9px 20px',
-                  borderRadius: 10,
-                  fontSize: '0.84rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  boxShadow: '0 4px 12px rgba(37,99,235,0.3)',
-                }}
-              >
-                <FolderIcon size={16} color="#FFFFFF" />
-                <span>{vault?.is_connected ? 'Change / Re-link Folder' : 'Connect PLACEMENT Folder'}</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* 4-Step Instructions Strip */}
-        <div
-          style={{
-            marginTop: 22,
-            background: 'rgba(0,0,0,0.22)',
-            borderRadius: 14,
-            padding: '16px 20px',
-            border: '1px solid rgba(255,255,255,0.1)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 16,
-          }}
-        >
-          <div>
-            <div style={{ color: '#93C5FD', fontSize: '0.75rem', fontWeight: 800 }}>STEP 1 • CREATE FOLDER</div>
-            <div style={{ fontSize: '0.82rem', marginTop: 3, opacity: 0.9 }}>
-              In your personal Google Drive, create a folder named <strong>"PLACEMENT"</strong>.
-            </div>
-          </div>
-          <div>
-            <div style={{ color: '#93C5FD', fontSize: '0.75rem', fontWeight: 800 }}>STEP 2 • UPLOAD CERTIFICATES</div>
-            <div style={{ fontSize: '0.82rem', marginTop: 3, opacity: 0.9 }}>
-              Upload 10th & Inter marksheets, UG transcripts, internship & course certificates.
-            </div>
-          </div>
-          <div>
-            <div style={{ color: '#93C5FD', fontSize: '0.75rem', fontWeight: 800 }}>STEP 3 • SHARING PERMISSION</div>
-            <div style={{ fontSize: '0.82rem', marginTop: 3, opacity: 0.9 }}>
-              Set folder sharing to <strong>"Anyone with the link can view"</strong> (Viewer).
-            </div>
-          </div>
-          <div>
-            <div style={{ color: '#93C5FD', fontSize: '0.75rem', fontWeight: 800 }}>STEP 4 • AI CROSS-CHECK</div>
-            <div style={{ fontSize: '0.82rem', marginTop: 3, opacity: 0.9 }}>
-              Click <strong>"Run AI Cross-Verification"</strong> to compare certificates with your profile.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── SECTION 2: AI VERIFICATION OVERVIEW & KPI DASHBOARD ── */}
+      {/* ── TOP HEADER / ACTION BAR ── */}
       <div
         style={{
           background: 'var(--card-bg, #FFFFFF)',
           border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-          borderRadius: 18,
-          padding: 24,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+          borderRadius: 14,
+          padding: '14px 20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: 'rgba(124,58,237,0.12)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <SparklesIcon size={22} color="#7C3AED" />
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                AI Cross-Verification Engine
-              </h3>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                {report?.verified_at
-                  ? `Last verified on ${new Date(report.verified_at).toLocaleString()}`
-                  : 'Ready to run cross-verification against student profile.'}
-              </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: 'rgba(37,99,235,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <GoogleDriveIcon size={22} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                Google Drive Vault
+              </h2>
+              <span
+                style={{
+                  background: vault?.is_connected ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+                  color: vault?.is_connected ? '#16A34A' : '#D97706',
+                  border: `1px solid ${vault?.is_connected ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                }}
+              >
+                {vault?.is_connected ? 'Connected' : 'Setup Required'}
+              </span>
+              {studentProfile && (studentProfile.name || studentProfile.roll_number) && (
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  ({studentProfile.roll_number || studentProfile.student_id})
+                </span>
+              )}
             </div>
           </div>
+        </div>
 
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        {/* Header Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {!isStaffMode && !vault?.is_connected && (
+            <button
+              type="button"
+              onClick={handleLoadDemoFolder}
+              disabled={isPopulatingDemo}
+              style={{
+                background: 'var(--bg-secondary, rgba(0,0,0,0.04))',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-primary)',
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isPopulatingDemo ? 'wait' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <SparklesIcon size={14} color="#D97706" />
+              <span>{isPopulatingDemo ? 'Loading...' : 'Demo Folder'}</span>
+            </button>
+          )}
+
+          {!isStaffMode && (
+            <button
+              type="button"
+              onClick={() => setShowConnectModal(true)}
+              style={{
+                background: '#2563EB',
+                border: 'none',
+                color: '#FFFFFF',
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <FolderIcon size={14} color="#FFFFFF" />
+              <span>{vault?.is_connected ? 'Re-link Folder' : 'Connect Folder'}</span>
+            </button>
+          )}
+
+          {vault?.is_connected && (
             <button
               type="button"
               onClick={handleRunAiVerification}
-              disabled={isVerifying || !vault?.is_connected}
+              disabled={isVerifying}
               style={{
-                background: isVerifying ? '#9CA3AF' : 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)',
-                color: '#FFFFFF',
+                background: 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)',
                 border: 'none',
-                padding: '10px 22px',
-                borderRadius: 10,
-                fontSize: '0.85rem',
+                color: '#FFFFFF',
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
                 fontWeight: 700,
-                cursor: isVerifying || !vault?.is_connected ? 'not-allowed' : 'pointer',
+                cursor: isVerifying ? 'wait' : 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 4px 12px rgba(124,58,237,0.25)',
+                gap: 6,
               }}
             >
-              <SparklesIcon size={16} color="#FFFFFF" />
-              <span>{isVerifying ? 'AI Scanning Documents...' : 'Run AI Cross-Verification'}</span>
+              <SparklesIcon size={14} color="#FFFFFF" />
+              <span>{isVerifying ? 'Scanning...' : 'Run Scan'}</span>
             </button>
-          </div>
-        </div>
+          )}
 
-        {/* AI Audit Summary Card */}
-        {report && (
-          <div
+          <button
+            type="button"
+            onClick={toggleAllSubdivisions}
             style={{
-              marginTop: 18,
-              background: 'rgba(124,58,237,0.05)',
-              border: '1px solid rgba(124,58,237,0.2)',
-              borderRadius: 14,
-              padding: '14px 18px',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 14,
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-secondary)',
+              padding: '6px 12px',
+              borderRadius: 8,
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
             }}
           >
-            <div style={{ fontSize: '1.2rem', marginTop: 1 }}>🤖</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
-                {report.overall_result === 'ALL_VERIFIED'
-                  ? 'All Academic & Placement Credentials Verified & Matching'
-                  : report.overall_result === 'DISCREPANCIES_FOUND'
-                  ? 'Attention: Discrepancies Detected Between Drive & Profile'
-                  : 'Document Verification Status'}
-              </div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
-                {report.summary}
-              </div>
-            </div>
-          </div>
-        )}
+            <span>{allOpen ? 'Collapse All' : 'Expand All'}</span>
+            {allOpen ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+          </button>
+        </div>
+      </div>
 
-        {/* Progress & Stat Cards */}
+      {/* ── SUBDIVISION 1: FOLDER CONNECTION & ACCESS (COLLAPSIBLE DROPDOWN) ── */}
+      <div
+        style={{
+          background: 'var(--card-bg, #FFFFFF)',
+          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
+          borderRadius: 14,
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+        }}
+      >
         <div
+          onClick={() => toggleSubdivision('folder')}
           style={{
-            marginTop: 20,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 14,
+            padding: '14px 20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            background: openSubdivisions.folder ? 'var(--bg-secondary, rgba(0,0,0,0.02))' : 'var(--card-bg, #FFFFFF)',
+            borderBottom: openSubdivisions.folder ? '1px solid var(--border-color, rgba(0,0,0,0.08))' : 'none',
+            userSelect: 'none',
           }}
         >
-          {/* Progress bar card */}
-          <div
-            style={{
-              background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
-              border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-              borderRadius: 14,
-              padding: '14px 16px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                VERIFICATION PROGRESS
-              </span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#16A34A' }}>
-                {verifiedPercent}%
-              </span>
-            </div>
-            <div
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FolderIcon size={18} color="#2563EB" />
+            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Folder Connection & Access
+            </span>
+            <span
               style={{
-                width: '100%',
-                height: 8,
-                background: 'rgba(0,0,0,0.08)',
-                borderRadius: 4,
-                marginTop: 8,
-                overflow: 'hidden',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                color: vault?.is_connected ? '#16A34A' : '#D97706',
+                background: vault?.is_connected ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                padding: '2px 8px',
+                borderRadius: 10,
               }}
             >
-              <div
-                style={{
-                  width: `${verifiedPercent}%`,
-                  height: '100%',
-                  background: verifiedPercent === 100 ? '#16A34A' : '#3B82F6',
-                  transition: 'width 0.4s ease',
-                }}
-              />
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 6 }}>
-              {report?.verified_count ?? 0} of {report?.total_items ?? 6} requirements confirmed
-            </div>
+              {vault?.is_connected ? `Linked: "${vault.folder_name || 'PLACEMENT'}"` : 'Not Linked'}
+            </span>
           </div>
 
-          {/* Verified Items */}
-          <div
-            style={{
-              background: 'rgba(34,197,94,0.05)',
-              border: '1px solid rgba(34,197,94,0.2)',
-              borderRadius: 14,
-              padding: '14px 16px',
-            }}
-          >
-            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16A34A' }}>VERIFIED & MATCHING</div>
-            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#16A34A', marginTop: 4 }}>
-              {report?.verified_count ?? 0}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-              Credentials fully validated
-            </div>
-          </div>
-
-          {/* Mismatches */}
-          <div
-            style={{
-              background: 'rgba(245,158,11,0.05)',
-              border: '1px solid rgba(245,158,11,0.2)',
-              borderRadius: 14,
-              padding: '14px 16px',
-            }}
-          >
-            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#D97706' }}>DISCREPANCIES</div>
-            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#D97706', marginTop: 4 }}>
-              {report?.mismatch_count ?? 0}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-              Profile vs marksheets conflicts
-            </div>
-          </div>
-
-          {/* Missing in Drive */}
-          <div
-            style={{
-              background: 'rgba(239,68,68,0.05)',
-              border: '1px solid rgba(239,68,68,0.2)',
-              borderRadius: 14,
-              padding: '14px 16px',
-            }}
-          >
-            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#DC2626' }}>MISSING IN DRIVE</div>
-            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#DC2626', marginTop: 4 }}>
-              {report?.missing_count ?? 0}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-              Required files not uploaded
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── SECTION 3: INTERACTIVE CHECKBOX SYSTEM & VERIFICATION TABLE ── */}
-      <div
-        style={{
-          background: 'var(--card-bg, #FFFFFF)',
-          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-          borderRadius: 18,
-          padding: 24,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              Document Verification Checklist
-            </h3>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-              Interactive checkbox system cross-referencing college profile claims with Drive evidence
-            </div>
-          </div>
-
-          {/* Filter Pills */}
-          <div style={{ display: 'flex', gap: 6, background: 'var(--bg-secondary, rgba(0,0,0,0.03))', padding: 4, borderRadius: 10 }}>
-            {(['ALL', 'VERIFIED', 'MISMATCH', 'MISSING'] as const).map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setFilterStatus(st)}
-                style={{
-                  background: filterStatus === st ? '#2563EB' : 'transparent',
-                  color: filterStatus === st ? '#FFFFFF' : 'var(--text-secondary)',
-                  border: 'none',
-                  padding: '5px 12px',
-                  borderRadius: 7,
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {st === 'ALL' ? 'All Items' : st === 'VERIFIED' ? 'Verified' : st === 'MISMATCH' ? 'Discrepancies' : 'Missing'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Checklist Rows */}
-        <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {filteredChecklist.length === 0 ? (
-            <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              No checklist items match the selected filter.
-            </div>
-          ) : (
-            filteredChecklist.map((item) => (
-              <div
-                key={item.key}
-                style={{
-                  background: item.is_checked ? 'rgba(34,197,94,0.02)' : 'var(--bg-main, #F8FAFC)',
-                  border: `1px solid ${item.is_checked ? 'rgba(34,197,94,0.25)' : 'var(--border-color, rgba(0,0,0,0.08))'}`,
-                  borderRadius: 14,
-                  padding: '16px 20px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 16,
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                {/* Checkbox Input */}
-                <div style={{ marginTop: 2 }}>
-                  <input
-                    type="checkbox"
-                    id={`check_${item.key}`}
-                    checked={item.is_checked}
-                    onChange={() => handleToggleChecklist(item)}
-                    title={isStaffMode ? 'Click to sign-off or toggle verification' : 'Toggle verified state'}
-                    style={{
-                      width: 20,
-                      height: 20,
-                      accentColor: '#16A34A',
-                      cursor: 'pointer',
-                      borderRadius: 4,
-                    }}
-                  />
-                </div>
-
-                {/* Content details */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <label
-                        htmlFor={`check_${item.key}`}
-                        style={{
-                          fontSize: '0.92rem',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {item.label}
-                      </label>
-                      <span
-                        style={{
-                          background: item.required ? 'rgba(239,68,68,0.1)' : 'rgba(100,116,139,0.1)',
-                          color: item.required ? '#DC2626' : '#64748B',
-                          padding: '1px 7px',
-                          borderRadius: 6,
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                        }}
-                      >
-                        {item.required ? 'MANDATORY' : 'OPTIONAL'}
-                      </span>
-                    </div>
-
-                    <div>{getStatusBadge(item.status)}</div>
-                  </div>
-
-                  {/* Comparisons Grid */}
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                      gap: 10,
-                      background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
-                      padding: '10px 14px',
-                      borderRadius: 10,
-                      fontSize: '0.8rem',
-                    }}
-                  >
-                    <div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700 }}>
-                        COLLEGE PROFILE VALUE
-                      </div>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
-                        {item.profile_value || '—'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700 }}>
-                        EXTRACTED FROM DRIVE DOCUMENT
-                      </div>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
-                        {item.extracted_value || '—'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700 }}>
-                        MATCHED DRIVE FILE
-                      </div>
-                      <div style={{ fontWeight: 600, color: '#2563EB', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {item.matched_file_name ? (
-                          <span title={item.matched_file_name}>📄 {item.matched_file_name}</span>
-                        ) : (
-                          <span style={{ color: 'var(--text-secondary)' }}>None detected</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* AI Note */}
-                  {item.discrepancy_note && (
-                    <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                      💡 <em>{item.discrepancy_note}</em>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* ── SECTION 4: GOOGLE DRIVE FILES BROWSER IN THE 'PLACEMENT' FOLDER ── */}
-      <div
-        style={{
-          background: 'var(--card-bg, #FFFFFF)',
-          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-          borderRadius: 18,
-          padding: 24,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <FolderIcon size={22} color="#2563EB" />
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                Files in "PLACEMENT" Folder ({vault?.files?.length || 0})
-              </h3>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                Synchronized documents currently accessible through PlacementHub
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {vault?.folder_url && (
               <a
                 href={getSafeUrl(vault.folder_url) || "#"}
                 target="_blank"
                 rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 6,
-                  background: 'var(--bg-secondary, rgba(0,0,0,0.04))',
-                  border: '1px solid var(--border-color, rgba(0,0,0,0.1))',
-                  color: 'var(--text-primary)',
-                  padding: '7px 14px',
-                  borderRadius: 8,
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
+                  gap: 4,
+                  fontSize: '0.76rem',
+                  color: '#2563EB',
                   textDecoration: 'none',
+                  fontWeight: 600,
                 }}
               >
-                <span>Open Folder in Google Drive</span>
-                <ExternalLinkIcon size={13} />
+                <span>Drive</span>
+                <ExternalLinkIcon size={12} />
               </a>
             )}
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {openSubdivisions.folder ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+            </span>
+          </div>
+        </div>
 
-            {vault?.embedded_url && (
-              <button
-                type="button"
-                onClick={() => setShowEmbeddedBrowser((prev) => !prev)}
+        {openSubdivisions.folder && (
+          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 12,
+              }}
+            >
+              <div style={{ background: 'var(--bg-main)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>FOLDER NAME</span>
+                <div style={{ fontSize: '0.86rem', fontWeight: 700, marginTop: 2, color: 'var(--text-primary)' }}>
+                  {vault?.folder_name || 'PLACEMENT'}
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-main)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>STATUS</span>
+                <div style={{ fontSize: '0.86rem', fontWeight: 700, marginTop: 2, color: vault?.is_connected ? '#16A34A' : '#D97706' }}>
+                  {vault?.is_connected ? 'Connected & Viewer Verified' : 'Not Connected'}
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-main)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>LAST SYNC</span>
+                <div style={{ fontSize: '0.86rem', fontWeight: 700, marginTop: 2, color: 'var(--text-primary)' }}>
+                  {vault?.last_synced_at ? new Date(vault.last_synced_at).toLocaleTimeString() : 'Never'}
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-main)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>EMBEDDED VIEW</span>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 700, marginTop: 2, color: 'var(--text-primary)' }}>
+                    {showEmbeddedBrowser ? 'Visible' : 'Hidden'}
+                  </div>
+                </div>
+                {vault?.embedded_url && (
+                  <button
+                    type="button"
+                    onClick={() => setShowEmbeddedBrowser((prev) => !prev)}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--border-color)',
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      fontSize: '0.74rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {showEmbeddedBrowser ? 'Hide' : 'Show'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Embedded Drive iframe if toggled */}
+            {showEmbeddedBrowser && vault?.embedded_url && (
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden' }}>
+                <iframe
+                  src={vault.embedded_url}
+                  title="Google Drive Folder"
+                  style={{ width: '100%', height: 360, border: 'none' }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── SUBDIVISION 2: AI VERIFICATION & INSIGHTS (COLLAPSIBLE DROPDOWN) ── */}
+      <div
+        style={{
+          background: 'var(--card-bg, #FFFFFF)',
+          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
+          borderRadius: 14,
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        <div
+          onClick={() => toggleSubdivision('verification')}
+          style={{
+            padding: '14px 20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            background: openSubdivisions.verification ? 'var(--bg-secondary, rgba(0,0,0,0.02))' : 'var(--card-bg, #FFFFFF)',
+            borderBottom: openSubdivisions.verification ? '1px solid var(--border-color, rgba(0,0,0,0.08))' : 'none',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <SparklesIcon size={18} color="#7C3AED" />
+            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              AI Verification Overview
+            </span>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: verifiedPercent === 100 ? '#16A34A' : '#7C3AED',
+                background: verifiedPercent === 100 ? 'rgba(34,197,94,0.1)' : 'rgba(124,58,237,0.1)',
+                padding: '2px 8px',
+                borderRadius: 10,
+              }}
+            >
+              {verifiedPercent}% Verified
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {report?.verified_at && (
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                {new Date(report.verified_at).toLocaleDateString()}
+              </span>
+            )}
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {openSubdivisions.verification ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+            </span>
+          </div>
+        </div>
+
+        {openSubdivisions.verification && (
+          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* KPI Metrics */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                gap: 10,
+              }}
+            >
+              <div style={{ background: 'var(--bg-main)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>RATE</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16A34A', marginTop: 2 }}>
+                  {verifiedPercent}%
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-main)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>VERIFIED</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16A34A', marginTop: 2 }}>
+                  {report?.verified_count ?? 0}
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-main)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>MISMATCHES</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: report?.mismatch_count ? '#D97706' : 'var(--text-secondary)', marginTop: 2 }}>
+                  {report?.mismatch_count ?? 0}
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-main)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>MISSING</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: report?.missing_count ? '#DC2626' : 'var(--text-secondary)', marginTop: 2 }}>
+                  {report?.missing_count ?? 0}
+                </div>
+              </div>
+            </div>
+
+            {/* Concise Summary Note */}
+            {report?.summary && (
+              <div
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: showEmbeddedBrowser ? '#0B192C' : 'var(--bg-secondary, rgba(0,0,0,0.04))',
-                  border: '1px solid var(--border-color, rgba(0,0,0,0.1))',
-                  color: showEmbeddedBrowser ? '#FFFFFF' : 'var(--text-primary)',
-                  padding: '7px 14px',
+                  background: 'var(--bg-main)',
+                  border: '1px solid var(--border-color)',
                   borderRadius: 8,
+                  padding: '10px 14px',
                   fontSize: '0.8rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
                 }}
               >
-                <span>{showEmbeddedBrowser ? 'Hide Embedded Drive' : 'Show Embedded Drive'}</span>
-              </button>
+                <span>🤖</span>
+                <span>{report.summary}</span>
+              </div>
             )}
+          </div>
+        )}
+      </div>
 
+      {/* ── SUBDIVISION 3: VERIFICATION CHECKLIST (COLLAPSIBLE DROPDOWN) ── */}
+      <div
+        style={{
+          background: 'var(--card-bg, #FFFFFF)',
+          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
+          borderRadius: 14,
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        <div
+          onClick={() => toggleSubdivision('checklist')}
+          style={{
+            padding: '14px 20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            background: openSubdivisions.checklist ? 'var(--bg-secondary, rgba(0,0,0,0.02))' : 'var(--card-bg, #FFFFFF)',
+            borderBottom: openSubdivisions.checklist ? '1px solid var(--border-color, rgba(0,0,0,0.08))' : 'none',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CheckCircleIcon size={18} color="#16A34A" />
+            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Document Checklist
+            </span>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: '#2563EB',
+                background: 'rgba(37,99,235,0.1)',
+                padding: '2px 8px',
+                borderRadius: 10,
+              }}
+            >
+              {report?.verified_count ?? 0} of {report?.total_items ?? 0} Checked
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {openSubdivisions.checklist ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+            </span>
+          </div>
+        </div>
+
+        {openSubdivisions.checklist && (
+          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Filter & Subdivision Selector Controls */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Subdivision:
+                </span>
+                <select
+                  value={checklistSubdivision}
+                  onChange={(e) => setChecklistSubdivision(e.target.value)}
+                  style={{
+                    background: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    padding: '5px 10px',
+                    borderRadius: 8,
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {CHECKLIST_SUBDIVISIONS.map((sub) => (
+                    <option key={sub.value} value={sub.value}>
+                      {sub.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter Pills */}
+              <div style={{ display: 'flex', gap: 4, background: 'var(--bg-main)', padding: 3, borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                {(['ALL', 'VERIFIED', 'MISMATCH', 'MISSING'] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setFilterStatus(st)}
+                    style={{
+                      background: filterStatus === st ? '#2563EB' : 'transparent',
+                      color: filterStatus === st ? '#FFFFFF' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      fontSize: '0.74rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {st === 'ALL' ? 'All' : st === 'VERIFIED' ? 'Verified' : st === 'MISMATCH' ? 'Mismatches' : 'Missing'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Checklist Items Rows */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filteredChecklist.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                  No checklist items match the selected filter.
+                </div>
+              ) : (
+                filteredChecklist.map((item) => (
+                  <div
+                    key={item.key}
+                    style={{
+                      background: item.is_checked ? 'rgba(34,197,94,0.02)' : 'var(--bg-main)',
+                      border: `1px solid ${item.is_checked ? 'rgba(34,197,94,0.2)' : 'var(--border-color)'}`,
+                      borderRadius: 10,
+                      padding: '10px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 220 }}>
+                      <input
+                        type="checkbox"
+                        checked={item.is_checked}
+                        onChange={() => handleToggleChecklist(item)}
+                        style={{ width: 17, height: 17, accentColor: '#16A34A', cursor: 'pointer' }}
+                        title="Toggle verification sign-off"
+                      />
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {item.label}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              color: 'var(--text-secondary)',
+                              background: 'var(--bg-secondary, rgba(0,0,0,0.05))',
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            {item.category}
+                          </span>
+                        </div>
+
+                        {item.discrepancy_note && (
+                          <div style={{ fontSize: '0.74rem', color: '#D97706', marginTop: 2, fontWeight: 500 }}>
+                            ⚠️ {item.discrepancy_note}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {item.profile_value && (
+                        <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                          Profile: <strong>{item.profile_value}</strong>
+                        </span>
+                      )}
+
+                      {getStatusBadge(item.status)}
+
+                      {item.matched_file_id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const found = vault?.files.find((f) => f.id === item.matched_file_id);
+                            if (found) setPreviewFile(found);
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid var(--border-color)',
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            color: '#2563EB',
+                          }}
+                        >
+                          View File
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── SUBDIVISION 4: DRIVE FILES REPOSITORY (COLLAPSIBLE DROPDOWN) ── */}
+      <div
+        style={{
+          background: 'var(--card-bg, #FFFFFF)',
+          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
+          borderRadius: 14,
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        <div
+          onClick={() => toggleSubdivision('files')}
+          style={{
+            padding: '14px 20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            background: openSubdivisions.files ? 'var(--bg-secondary, rgba(0,0,0,0.02))' : 'var(--card-bg, #FFFFFF)',
+            borderBottom: openSubdivisions.files ? '1px solid var(--border-color, rgba(0,0,0,0.08))' : 'none',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FileTextIcon size={18} color="#2563EB" />
+            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Drive Files Repository
+            </span>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: '#2563EB',
+                background: 'rgba(37,99,235,0.1)',
+                padding: '2px 8px',
+                borderRadius: 10,
+              }}
+            >
+              {vault?.files?.length || 0} Files
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {!isStaffMode && (
               <button
                 type="button"
-                onClick={() => setShowAddFileModal(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAddFileModal(true);
+                }}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
                   background: '#2563EB',
                   border: 'none',
                   color: '#FFFFFF',
-                  padding: '7px 16px',
-                  borderRadius: 8,
-                  fontSize: '0.8rem',
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  fontSize: '0.74rem',
                   fontWeight: 700,
                   cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
                 }}
               >
-                <UploadIcon size={14} color="#FFFFFF" />
-                <span>+ Register Drive File</span>
+                <UploadIcon size={12} color="#FFFFFF" />
+                <span>+ Register</span>
               </button>
             )}
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {openSubdivisions.files ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+            </span>
           </div>
         </div>
 
-        {/* Optional Embedded Google Drive Browser iframe */}
-        {showEmbeddedBrowser && vault?.embedded_url && (
-          <div style={{ marginTop: 18, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
-            <iframe
-              src={vault.embedded_url}
-              title="Google Drive Embedded PLACEMENT Folder"
-              style={{ width: '100%', height: 420, border: 'none' }}
-            />
-          </div>
-        )}
-
-        {/* Files Grid */}
-        <div
-          style={{
-            marginTop: 18,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: 14,
-          }}
-        >
-          {(!vault?.files || vault.files.length === 0) ? (
-            <div
-              style={{
-                gridColumn: '1 / -1',
-                padding: '40px 20px',
-                textAlign: 'center',
-                color: 'var(--text-secondary)',
-                background: 'var(--bg-secondary, rgba(0,0,0,0.02))',
-                borderRadius: 14,
-                border: '1px dashed var(--border-color)',
-              }}
-            >
-              <FolderIcon size={38} color="#94A3B8" />
-              <div style={{ marginTop: 10, fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                No files registered in "PLACEMENT" folder yet
-              </div>
-              <div style={{ fontSize: '0.82rem', marginTop: 4 }}>
-                Connect your folder or click "Try Demo 'PLACEMENT' Folder" above to auto-load sample marksheets.
-              </div>
-            </div>
-          ) : (
-            vault.files.map((file) => (
-              <div
-                key={file.id}
-                style={{
-                  background: 'var(--bg-main, #F8FAFC)',
-                  border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                  borderRadius: 14,
-                  padding: '14px 16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <span
-                      style={{
-                        background: 'rgba(37,99,235,0.1)',
-                        color: '#2563EB',
-                        padding: '2px 8px',
-                        borderRadius: 6,
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {file.doc_type.replace('_', ' ')}
-                    </span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{file.file_size}</span>
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: '0.88rem',
-                      fontWeight: 700,
-                      color: 'var(--text-primary)',
-                      marginTop: 8,
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    📄 {file.name}
-                  </div>
-
-                  {file.extracted_text_snippet && (
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontSize: '0.74rem',
-                        color: 'var(--text-secondary)',
-                        lineHeight: 1.4,
-                        maxHeight: 40,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {file.extracted_text_snippet}
-                    </div>
-                  )}
-                </div>
-
-                <div
+        {openSubdivisions.files && (
+          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Document Type Subdivision Selector */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Document Type:
+                </span>
+                <select
+                  value={fileSubdivision}
+                  onChange={(e) => setFileSubdivision(e.target.value)}
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    borderTop: '1px solid var(--border-color, rgba(0,0,0,0.06))',
-                    paddingTop: 10,
+                    background: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    padding: '5px 10px',
+                    borderRadius: 8,
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
                   }}
                 >
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewFile(file)}
-                      style={{
-                        background: '#2563EB',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        padding: '5px 12px',
-                        borderRadius: 6,
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Preview
-                    </button>
-                    {file.drive_url && (
-                      <a
-                        href={getSafeUrl(file.drive_url) || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          background: 'transparent',
-                          border: '1px solid var(--border-color)',
-                          color: 'var(--text-primary)',
-                          padding: '5px 10px',
-                          borderRadius: 6,
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          textDecoration: 'none',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                      >
-                        <span>Drive</span>
-                        <ExternalLinkIcon size={12} />
-                      </a>
-                    )}
-                  </div>
-
-                  {!isStaffMode && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFile(file.id)}
-                      title="Remove file"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#DC2626',
-                        cursor: 'pointer',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                      }}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
+                  {FILE_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ))
-          )}
-        </div>
+
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                Showing {filteredFiles.length} of {files.length} files
+              </span>
+            </div>
+
+            {/* Files Grid */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                gap: 12,
+              }}
+            >
+              {filteredFiles.length === 0 ? (
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    padding: '24px',
+                    textAlign: 'center',
+                    color: 'var(--text-secondary)',
+                    background: 'var(--bg-main)',
+                    borderRadius: 10,
+                    border: '1px dashed var(--border-color)',
+                    fontSize: '0.82rem',
+                  }}
+                >
+                  No files found in this category.
+                </div>
+              ) : (
+                filteredFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    style={{
+                      background: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                        <span
+                          style={{
+                            background: 'rgba(37,99,235,0.1)',
+                            color: '#2563EB',
+                            padding: '1px 6px',
+                            borderRadius: 4,
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {file.doc_type.replace('_', ' ')}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                          {file.file_size}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.84rem',
+                          fontWeight: 700,
+                          color: 'var(--text-primary)',
+                          marginTop: 6,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={file.name}
+                      >
+                        📄 {file.name}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: 8 }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewFile(file)}
+                          style={{
+                            background: '#2563EB',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            padding: '4px 10px',
+                            borderRadius: 5,
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Preview
+                        </button>
+                        {file.drive_url && (
+                          <a
+                            href={getSafeUrl(file.drive_url) || "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              background: 'transparent',
+                              border: '1px solid var(--border-color)',
+                              color: 'var(--text-primary)',
+                              padding: '4px 8px',
+                              borderRadius: 5,
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                            }}
+                          >
+                            <span>Drive</span>
+                            <ExternalLinkIcon size={10} />
+                          </a>
+                        )}
+                      </div>
+
+                      {!isStaffMode && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFile(file.id)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#DC2626',
+                            cursor: 'pointer',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── MODAL: CONNECT GOOGLE DRIVE FOLDER ── */}
@@ -1324,31 +1424,31 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
             style={{
               background: 'var(--bg-surface, #FFFFFF)',
               color: 'var(--text-primary, #0F172A)',
-              borderRadius: 20,
-              padding: 28,
-              maxWidth: 520,
+              borderRadius: 14,
+              padding: 24,
+              maxWidth: 480,
               width: '100%',
               boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <GoogleDriveIcon size={24} />
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Connect "PLACEMENT" Folder</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <GoogleDriveIcon size={20} />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Connect PLACEMENT Folder</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowConnectModal(false)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
-                <CloseIcon size={18} />
+                <CloseIcon size={16} />
               </button>
             </div>
 
             <form onSubmit={handleConnectFolder}>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 5 }}>
-                  Folder Name in Google Drive
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 }}>
+                  Folder Name
                 </label>
                 <input
                   type="text"
@@ -1358,7 +1458,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                   required
                   style={{
                     width: '100%',
-                    padding: '9px 12px',
+                    padding: '8px 12px',
                     borderRadius: 8,
                     border: '1px solid var(--border-color)',
                     background: 'var(--input-bg, #FFFFFF)',
@@ -1366,46 +1466,41 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                     fontWeight: 600,
                   }}
                 />
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 3, display: 'block' }}>
-                  Must match the name of the folder created in your Google Drive.
-                </span>
               </div>
 
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 5 }}>
-                  Google Drive Folder Share Link
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 }}>
+                  Folder Share Link
                 </label>
                 <input
                   type="url"
                   value={folderInputUrl}
                   onChange={(e) => setFolderInputUrl(e.target.value)}
-                  placeholder="https://drive.google.com/drive/folders/1abc...xyz"
+                  placeholder="https://drive.google.com/drive/folders/..."
                   required
                   style={{
                     width: '100%',
-                    padding: '9px 12px',
+                    padding: '8px 12px',
                     borderRadius: 8,
                     border: '1px solid var(--border-color)',
                     background: 'var(--input-bg, #FFFFFF)',
                     color: 'var(--text-primary)',
                   }}
                 />
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 3, display: 'block' }}>
-                  Right-click folder in Drive → Share → Anyone with the link can view → Copy Link.
-                </span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button
                   type="button"
                   onClick={() => setShowConnectModal(false)}
                   style={{
                     background: 'transparent',
                     border: '1px solid var(--border-color)',
-                    padding: '8px 16px',
+                    padding: '7px 14px',
                     borderRadius: 8,
                     cursor: 'pointer',
                     fontWeight: 600,
+                    fontSize: '0.8rem',
                   }}
                 >
                   Cancel
@@ -1417,13 +1512,14 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                     background: '#2563EB',
                     color: '#FFFFFF',
                     border: 'none',
-                    padding: '8px 20px',
+                    padding: '7px 18px',
                     borderRadius: 8,
                     fontWeight: 700,
+                    fontSize: '0.8rem',
                     cursor: isConnecting ? 'wait' : 'pointer',
                   }}
                 >
-                  {isConnecting ? 'Validating...' : 'Connect & Scan'}
+                  {isConnecting ? 'Connecting...' : 'Connect & Scan'}
                 </button>
               </div>
             </form>
@@ -1450,38 +1546,38 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
             style={{
               background: 'var(--bg-surface, #FFFFFF)',
               color: 'var(--text-primary, #0F172A)',
-              borderRadius: 20,
-              padding: 28,
-              maxWidth: 500,
+              borderRadius: 14,
+              padding: 24,
+              maxWidth: 480,
               width: '100%',
               boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Register File from PLACEMENT Folder</h3>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Register Drive Document</h3>
               <button
                 type="button"
                 onClick={() => setShowAddFileModal(false)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
-                <CloseIcon size={18} />
+                <CloseIcon size={16} />
               </button>
             </div>
 
             <form onSubmit={handleAddFile}>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 5 }}>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 }}>
                   File Name
                 </label>
                 <input
                   type="text"
                   value={newFileName}
                   onChange={(e) => setNewFileName(e.target.value)}
-                  placeholder="e.g. 10th_CBSE_Marksheet.pdf"
+                  placeholder="e.g. 10th_Marksheet.pdf"
                   required
                   style={{
                     width: '100%',
-                    padding: '9px 12px',
+                    padding: '8px 12px',
                     borderRadius: 8,
                     border: '1px solid var(--border-color)',
                     background: 'var(--input-bg, #FFFFFF)',
@@ -1490,16 +1586,16 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                 />
               </div>
 
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 5 }}>
-                  Document Type / Category
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 }}>
+                  Document Type
                 </label>
                 <select
                   value={newDocType}
                   onChange={(e) => setNewDocType(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '9px 12px',
+                    padding: '8px 12px',
                     borderRadius: 8,
                     border: '1px solid var(--border-color)',
                     background: 'var(--input-bg, #FFFFFF)',
@@ -1508,46 +1604,27 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                   }}
                 >
                   <option value="10th_marksheet">10th / Secondary Marksheet</option>
-                  <option value="12th_marksheet">12th / Inter / Diploma Marksheet</option>
-                  <option value="ug_marksheet">UG Semester Transcripts / Grade Card</option>
+                  <option value="12th_marksheet">12th / Diploma Marksheet</option>
+                  <option value="ug_marksheet">UG Semester Transcripts</option>
                   <option value="internship_cert">Internship Certificate</option>
                   <option value="technical_cert">Technical Certification</option>
                   <option value="resume">Placement Resume / CV</option>
-                  <option value="other">Other Supporting Document</option>
+                  <option value="other">Other Document</option>
                 </select>
               </div>
 
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 5 }}>
-                  Google Drive Direct File Link (Optional)
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4 }}>
+                  Direct File Link (Optional)
                 </label>
                 <input
                   type="url"
                   value={newFileUrl}
                   onChange={(e) => setNewFileUrl(e.target.value)}
-                  placeholder="https://drive.google.com/file/d/.../view"
+                  placeholder="https://drive.google.com/file/d/..."
                   style={{
                     width: '100%',
-                    padding: '9px 12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg, #FFFFFF)',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 5 }}>
-                  File Size (e.g. 1.2 MB)
-                </label>
-                <input
-                  type="text"
-                  value={newFileSize}
-                  onChange={(e) => setNewFileSize(e.target.value)}
-                  placeholder="1.5 MB"
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
+                    padding: '8px 12px',
                     borderRadius: 8,
                     border: '1px solid var(--border-color)',
                     background: 'var(--input-bg, #FFFFFF)',
@@ -1556,17 +1633,18 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button
                   type="button"
                   onClick={() => setShowAddFileModal(false)}
                   style={{
                     background: 'transparent',
                     border: '1px solid var(--border-color)',
-                    padding: '8px 16px',
+                    padding: '7px 14px',
                     borderRadius: 8,
                     cursor: 'pointer',
                     fontWeight: 600,
+                    fontSize: '0.8rem',
                   }}
                 >
                   Cancel
@@ -1577,9 +1655,10 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                     background: '#2563EB',
                     color: '#FFFFFF',
                     border: 'none',
-                    padding: '8px 20px',
+                    padding: '7px 18px',
                     borderRadius: 8,
                     fontWeight: 700,
+                    fontSize: '0.8rem',
                     cursor: 'pointer',
                   }}
                 >
@@ -1603,15 +1682,15 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 20,
+            padding: 16,
           }}
         >
           <div
             style={{
               background: 'var(--bg-surface, #FFFFFF)',
               color: 'var(--text-primary, #0F172A)',
-              borderRadius: 20,
-              maxWidth: 720,
+              borderRadius: 14,
+              maxWidth: 640,
               width: '100%',
               overflow: 'hidden',
               boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
@@ -1621,7 +1700,7 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
           >
             <div
               style={{
-                padding: '18px 24px',
+                padding: '14px 20px',
                 borderBottom: '1px solid var(--border-color)',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -1629,8 +1708,8 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
               }}
             >
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>📄 {previewFile.name}</h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>📄 {previewFile.name}</h3>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                   {previewFile.doc_type.replace('_', ' ').toUpperCase()} • {previewFile.file_size}
                 </span>
               </div>
@@ -1639,37 +1718,34 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                 onClick={() => setPreviewFile(null)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
-                <CloseIcon size={18} />
+                <CloseIcon size={16} />
               </button>
             </div>
 
-            <div style={{ padding: 24, maxHeight: 400, overflowY: 'auto' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 8, color: 'var(--text-secondary)' }}>
-                EXTRACTED OCR / TEXT PREVIEW
-              </div>
+            <div style={{ padding: 18, maxHeight: 340, overflowY: 'auto' }}>
               <div
                 style={{
                   background: 'var(--bg-main, #F8FAFC)',
-                  padding: 16,
-                  borderRadius: 12,
+                  padding: 14,
+                  borderRadius: 8,
                   border: '1px solid var(--border-color)',
-                  fontSize: '0.85rem',
-                  lineHeight: 1.6,
+                  fontSize: '0.82rem',
+                  lineHeight: 1.5,
                   whiteSpace: 'pre-wrap',
                   fontFamily: 'monospace',
                 }}
               >
-                {previewFile.extracted_text_snippet || 'Document text extracted and indexed by placement OCR engine.'}
+                {previewFile.extracted_text_snippet || 'Document text indexed by verification engine.'}
               </div>
             </div>
 
             <div
               style={{
-                padding: '14px 24px',
+                padding: '12px 20px',
                 borderTop: '1px solid var(--border-color)',
                 display: 'flex',
                 justifyContent: 'flex-end',
-                gap: 10,
+                gap: 8,
               }}
             >
               {previewFile.drive_url && (
@@ -1680,18 +1756,18 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                   style={{
                     background: '#2563EB',
                     color: '#FFFFFF',
-                    padding: '8px 18px',
-                    borderRadius: 8,
-                    fontSize: '0.82rem',
+                    padding: '6px 14px',
+                    borderRadius: 6,
+                    fontSize: '0.78rem',
                     fontWeight: 700,
                     textDecoration: 'none',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 4,
                   }}
                 >
-                  <span>Open in Google Drive</span>
-                  <ExternalLinkIcon size={14} />
+                  <span>Open in Drive</span>
+                  <ExternalLinkIcon size={12} />
                 </a>
               )}
               <button
@@ -1700,9 +1776,9 @@ export const StudentGDriveVault: React.FC<StudentGDriveVaultProps> = ({
                 style={{
                   background: 'transparent',
                   border: '1px solid var(--border-color)',
-                  padding: '8px 16px',
-                  borderRadius: 8,
-                  fontSize: '0.82rem',
+                  padding: '6px 14px',
+                  borderRadius: 6,
+                  fontSize: '0.78rem',
                   fontWeight: 600,
                   cursor: 'pointer',
                 }}

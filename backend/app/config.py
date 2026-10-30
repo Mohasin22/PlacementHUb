@@ -14,7 +14,7 @@ class Settings:
     # SMTP Email Delivery (optional — falls back to console if not set)
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USER: str = os.getenv("SMTP_USER", "")        # e.g. yourapp@gmail.com
+    SMTP_USER: str = os.getenv("SMTP_USER", "5241411066@gvpcdpgc.edu.in")
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")  # Gmail App Password
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "PlacementHub")
 

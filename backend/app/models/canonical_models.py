@@ -108,7 +108,7 @@ class DocumentsData(BaseModel):
 
 # ── 8. Authentication & Approval Lifecycle ────────────────────────────────────
 class AuthenticationState(BaseModel):
-    account_status: str = "IMPORTED_PENDING_FACULTY"  # IMPORTED_PENDING_FACULTY, READY_FOR_FIRST_LOGIN, ACTIVE, SUSPENDED
+    account_status: str = "READY_FOR_FIRST_LOGIN"  # READY_FOR_FIRST_LOGIN, ACTIVE, SUSPENDED
     first_login_completed: bool = False
     password_set: bool = False
     password_hash: Optional[str] = None
@@ -118,7 +118,7 @@ class AuthenticationState(BaseModel):
     last_login: Optional[str] = None
 
 class ApprovalState(BaseModel):
-    faculty_status: str = "PENDING"  # PENDING, APPROVED, REJECTED, CORRECTION_REQUESTED, MAPPING_REVIEW
+    faculty_status: str = "APPROVED"  # APPROVED, REJECTED, CORRECTION_REQUESTED, MAPPING_REVIEW
     faculty_id: Optional[str] = None
     faculty_name: Optional[str] = None
     approved_at: Optional[str] = None

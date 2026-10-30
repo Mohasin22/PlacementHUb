@@ -366,7 +366,7 @@ export const BulkStudentUpload: React.FC<BulkStudentUploadProps> = ({
           </div>
           <div>
             Processed <strong>{commitResult.summary?.total_rows}</strong> records ({commitResult.summary?.inserted_count} new insertions, {commitResult.summary?.updated_count} updates).
-            All students are automatically routed to their respective Faculty Coordinators for review.
+            All students can now log in immediately and are mapped to their respective Faculty Coordinators.
           </div>
           <button
             onClick={handleReset}
