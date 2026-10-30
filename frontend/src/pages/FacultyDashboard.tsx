@@ -1,3 +1,4 @@
+import { getSafeUrl } from '../utils/safeUrl';
 import React, { useState, useEffect } from 'react';
 
 const API_BASE = 'http://localhost:8000/api';
@@ -153,20 +154,16 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
     }
   };
 
-  const [classOptions, setClassOptions] = useState<any[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState<string>('');
-
   useEffect(() => {
-    fetchReviews(selectedClassId);
-  }, [selectedClassId]);
+    fetchReviews();
+  }, []);
 
-  const fetchReviews = async (classId?: string) => {
+  const fetchReviews = async () => {
     setIsLoading(true);
     setError(null);
     setSelectedIds(new Set());
     try {
-      const qParam = classId ? `?class_id=${classId}` : '';
-      const response = await fetch(`${API_BASE}/faculty/reviews/pending${qParam}`, {
+      const response = await fetch(`${API_BASE}/faculty/reviews/pending`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -179,15 +176,12 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
       setUpdates(data.updates || []);
 
       // Also fetch enrolled students
-      const stdResponse = await fetch(`${API_BASE}/faculty/students${qParam}`, {
+      const stdResponse = await fetch(`${API_BASE}/faculty/students`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (stdResponse.ok) {
         const stdData = await stdResponse.json();
         setEnrolledStudents(stdData.students || []);
-        if (stdData.class_options) {
-          setClassOptions(stdData.class_options);
-        }
       }
     } catch (err: any) {
       setError(err.message);
@@ -348,67 +342,12 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
       <div style={styles.header}>
         <div>
           <h2 style={styles.pageTitle}>Faculty Verification Desk</h2>
-          <p style={styles.pageSubtitle}>Review and approve student registrations and profile changes for your assigned batch & class.</p>
+          <p style={styles.pageSubtitle}>Review and approve student registrations and profile changes for your assigned department / branch.</p>
         </div>
-        <button onClick={() => fetchReviews(selectedClassId)} style={styles.refreshBtn} disabled={isLoading}>
+        <button onClick={() => fetchReviews()} style={styles.refreshBtn} disabled={isLoading}>
           {isLoading ? '⟳ Syncing...' : '↻ Sync Queue'}
         </button>
       </div>
-
-      {classOptions && classOptions.length > 0 && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          background: 'var(--card-bg)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 12,
-          padding: '12px 16px',
-          marginBottom: 20,
-          flexWrap: 'wrap'
-        }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-            ASSIGNED CLASS SECTIONS:
-          </span>
-          <button
-            onClick={() => setSelectedClassId('')}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 20,
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              border: 'none',
-              cursor: 'pointer',
-              background: !selectedClassId ? '#4F46E5' : 'rgba(0,0,0,0.06)',
-              color: !selectedClassId ? '#fff' : 'var(--text-primary)',
-            }}
-          >
-            All Assigned Classes ({classOptions.length})
-          </button>
-          {classOptions.map((cls) => (
-            <button
-              key={cls.id}
-              onClick={() => setSelectedClassId(cls.id)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 20,
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: selectedClassId === cls.id ? '#4F46E5' : 'rgba(0,0,0,0.06)',
-                color: selectedClassId === cls.id ? '#fff' : 'var(--text-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <span>🏫</span>
-              <span>{cls.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         <div>
@@ -519,7 +458,7 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ token, activ
                               <p>
                                 <strong>Resume: </strong>
                                 {sub.resume_url ? (
-                                  <a href={sub.resume_url} target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                  <a href={getSafeUrl(sub.resume_url) || "#"} target="_blank" rel="noopener noreferrer" style={styles.link}>
                                     View Resume PDF ↗
                                   </a>
                                 ) : 'Not uploaded'}

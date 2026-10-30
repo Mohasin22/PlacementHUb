@@ -11,6 +11,8 @@ import {
   UploadIcon,
   PlusIcon,
   CheckIcon,
+  CheckCircleIcon,
+  RefreshIcon,
   AlertIcon,
   StarIcon,
   AwardIcon,
@@ -34,7 +36,7 @@ interface TpoDashboardProps {
   setActiveTab?: (tab: string) => void;
 }
 
-type Tab = 'drives' | 'analytics' | 'events' | 'create' | 'applicants' | 'export' | 'upload' | 'faculty' | 'students';
+type Tab = 'drives' | 'analytics' | 'events' | 'create' | 'applicants' | 'upload' | 'faculty' | 'students';
 
 const STATUS_OPTS = ['Applied', 'Shortlisted', 'Selected', 'On-Hold', 'Rejected', 'Cancelled', 'Placed'];
 const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
@@ -46,13 +48,6 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   Cancelled: { bg: 'rgba(239,68,68,0.18)', color: '#F87171' },
   'On-Hold': { bg: 'rgba(156,163,175,0.1)', color: '#6B7280' },
 };
-const ALL_EXPORT_FIELDS = [
-  'Student ID / Roll Number', 'Full Name', 'Institutional Email', 'Personal Email', 'Mobile Number',
-  'Program', 'Department', 'Class / Section', 'Year of Passing',
-  '10th Percentage', '12th / Diploma Percentage', 'UG CGPA', 'UG Percentage',
-  'Current Backlogs', 'Skills', 'Projects', 'Internships', 'Certifications',
-  'LinkedIn', 'GitHub', 'Portfolio', 'Resume URL', 'Application Status'
-];
 
 const EMPTY_FORM = {
   companyName: '', jobRole: '', package: '', location: '', mode: 'On-campus',
@@ -85,7 +80,11 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
       setShowBulkUpload(true);
       if (setActiveTab) setActiveTab('students');
     } else if (activeTab && activeTab !== tab) {
-      setTabState(activeTab as Tab);
+      if ((activeTab as any) === 'export') {
+        setTabState('drives');
+      } else {
+        setTabState(activeTab as Tab);
+      }
     }
   }, [activeTab]);
 
@@ -98,16 +97,13 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
   const [appsLoading, setAppsLoading] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingDriveId, setEditingDriveId] = useState<string | null>(null);
-  const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', phone: '', class_id: '' });
+  const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', phone: '', department_id: '' });
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [facultyLoading, setFacultyLoading] = useState(false);
   const [facultySearch, setFacultySearch] = useState('');
   const [isFacultyModalOpen, setIsFacultyModalOpen] = useState(false);
   const [students, setStudents] = useState<any[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
-  const [exportDriveId, setExportDriveId] = useState('');
-  const [exportStatus, setExportStatus] = useState('Shortlisted');
-  const [exportFields, setExportFields] = useState<string[]>(['Name', 'Roll Number', 'Institute Email', 'CGPA', 'Mobile', 'Skills', 'Resume Link', 'Status']);
   const [_tpoProgramName, setTpoProgramName] = useState<string>('');
   const [facultyDeptId, setFacultyDeptId] = useState<string>('');
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -188,6 +184,25 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
   useEffect(() => { if (tab === 'faculty') loadFaculty(); }, [tab, loadFaculty]);
 
+  // ── Pending Student Profile Updates for TPO ──
+  const [studentSubTab, setStudentSubTab] = useState<'directory' | 'updates'>('directory');
+  const [pendingUpdates, setPendingUpdates] = useState<any[]>([]);
+  const [updatesLoading, setUpdatesLoading] = useState(false);
+  const [updatesSearchQuery, setUpdatesSearchQuery] = useState('');
+  const [actionInProgressId, setActionInProgressId] = useState<string | null>(null);
+
+  const loadPendingUpdates = useCallback(async () => {
+    setUpdatesLoading(true);
+    try {
+      const res = await fetch(`${API}/tpo/reviews/updates`, { headers: h });
+      if (res.ok) setPendingUpdates(await res.json());
+    } catch (err) {
+      console.error('Failed to load pending updates:', err);
+    } finally {
+      setUpdatesLoading(false);
+    }
+  }, [token]);
+
   const loadStudents = useCallback(async () => {
     setStudentsLoading(true);
     try {
@@ -196,7 +211,47 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     } finally { setStudentsLoading(false); }
   }, [token]);
 
-  useEffect(() => { if (tab === 'students') loadStudents(); }, [tab, loadStudents]);
+  useEffect(() => {
+    if (tab === 'students') {
+      loadStudents();
+      loadPendingUpdates();
+    }
+  }, [tab, loadStudents, loadPendingUpdates]);
+
+  const handleApproveUpdate = async (id: string) => {
+    setActionInProgressId(id);
+    try {
+      const res = await fetch(`${API}/tpo/reviews/updates/${id}/approve`, {
+        method: 'POST',
+        headers: h,
+      });
+      if (!res.ok) throw new Error('Failed to merge profile updates.');
+      flash('Profile updates merged successfully!');
+      await loadPendingUpdates();
+      await loadStudents();
+    } catch (err: any) {
+      flash(err.message || 'Error approving update', true);
+    } finally {
+      setActionInProgressId(null);
+    }
+  };
+
+  const handleRejectUpdate = async (id: string) => {
+    setActionInProgressId(id);
+    try {
+      const res = await fetch(`${API}/tpo/reviews/updates/${id}/reject`, {
+        method: 'POST',
+        headers: h,
+      });
+      if (!res.ok) throw new Error('Failed to reject profile changes.');
+      flash('Profile updates rejected.');
+      await loadPendingUpdates();
+    } catch (err: any) {
+      flash(err.message || 'Error rejecting update', true);
+    } finally {
+      setActionInProgressId(null);
+    }
+  };
 
 
   const loadApplicants = async (driveId: string) => {
@@ -342,20 +397,21 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     else flash('Failed to delete drive.', false);
   };
 
-  const tpoSelectedClasses = (() => {
-    if (!facultyDeptId) return [];
-    for (const p of hierarchy) {
-      for (const d of p.departments || []) {
-        if (d.id === facultyDeptId) {
-          return d.classes || [];
+
+  const getDeptInfo = (deptId?: string) => {
+    if (!deptId) return null;
+    for (const prog of hierarchy) {
+      for (const dept of prog.departments || []) {
+        if (dept.id === deptId) {
+          return dept.name;
         }
       }
     }
-    return [];
-  })();
+    return null;
+  };
 
   const getClassInfo = (classId?: string) => {
-    if (!classId) return 'Assigned Class';
+    if (!classId) return 'Assigned Department';
     for (const prog of hierarchy) {
       for (const dept of prog.departments || []) {
         for (const cls of dept.classes || []) {
@@ -365,22 +421,26 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
         }
       }
     }
-    return 'Assigned Class';
+    return 'Assigned Department';
   };
 
   const createFaculty = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!facultyDeptId) {
+      flash('Please select a Department / Branch for the Faculty Coordinator.', false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`${API}/faculty/register`, {
         method: 'POST',
         headers: h,
-        body: JSON.stringify(facultyForm)
+        body: JSON.stringify({ ...facultyForm, department_id: facultyDeptId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to appoint Faculty Coordinator');
       flash(`Faculty Coordinator appointed successfully! They can now login.`);
-      setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+      setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
       setFacultyDeptId('');
       setIsFacultyModalOpen(false);
       loadFaculty();
@@ -467,21 +527,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     }
   };
 
-  const exportExcel = async () => {
-    if (!exportDriveId) { flash('Select a drive.', false); return; }
-    const res = await fetch(`${API}/tpo/drives/${exportDriveId}/export`, {
-      method: 'POST', headers: h, body: JSON.stringify({ fields: exportFields, status_filter: exportStatus || null }),
-    });
-    if (res.ok) {
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url;
-      const drive = drives.find(d => d.id === exportDriveId);
-      a.download = drive ? `${drive.company_name}_HR_Report.xlsx` : 'PlacementHub_Export.xlsx';
-      a.click(); URL.revokeObjectURL(url);
-      flash('Excel report downloaded!');
-    } else flash('Export failed.', false);
-  };
 
   const toggleSelect = (id: string) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -1338,48 +1383,6 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
 
 
-      {/* ── EXPORT HR REPORT TAB ── */}
-      {tab === 'export' && (
-        <div style={s.formCard}>
-          <h3 style={s.formTitle}>Export Recruitment Data to Excel</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 16 }}>
-            <label style={s.label}>
-              Select Placement Drive *
-              <select style={s.input} value={exportDriveId} onChange={e => setExportDriveId(e.target.value)}>
-                <option value="">-- Choose Drive --</option>
-                {drives.map(d => (
-                  <option key={d.id} value={d.id}>{d.company_name} — {d.job_role}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={s.label}>
-              Filter Status
-              <select style={s.input} value={exportStatus} onChange={e => setExportStatus(e.target.value)}>
-                <option value="">All Statuses</option>
-                {STATUS_OPTS.map(st => <option key={st} value={st}>{st}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <div style={{ marginTop: 24 }}>
-            <label style={s.sectionHeader}>Select Columns to Export</label>
-            <div style={s.chipRow}>
-              {ALL_EXPORT_FIELDS.map(f => (
-                <button key={f} type="button" onClick={() => setExportFields(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])}
-                  style={{ ...s.chip, ...(exportFields.includes(f) ? s.chipSelected : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {exportFields.includes(f) ? <CheckIcon size={13} color="#3B82F6" /> : <PlusIcon size={13} color="currentColor" />}
-                  <span>{f}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button onClick={exportExcel} style={{ ...s.primaryBtn, width: '100%', marginTop: 28 }}>
-            <FileSpreadsheetIcon size={18} /> Generate & Download Excel
-          </button>
-        </div>
-      )}
 
       {/* ── FACULTY COORDINATORS TAB ── */}
       {tab === 'faculty' && (
@@ -1426,7 +1429,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
               <button
                 onClick={() => {
-                  setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+                  setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
                   setFacultyDeptId('');
                   setIsFacultyModalOpen(true);
                 }}
@@ -1545,7 +1548,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
 
                         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            Class: <strong style={{ color: 'var(--text-primary)' }}>{classLabel}</strong>
+                            Branch / Dept: <strong style={{ color: 'var(--text-primary)' }}>{getDeptInfo(f.department_id) || classLabel}</strong>
                           </span>
                           <button
                             type="button"
@@ -1579,7 +1582,7 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                 <button
                   type="button"
                   onClick={() => {
-                    setFacultyForm({ name: '', email: '', password: '', phone: '', class_id: '' });
+                    setFacultyForm({ name: '', email: '', password: '', phone: '', department_id: '' });
                     setFacultyDeptId('');
                     setIsFacultyModalOpen(true);
                   }}
@@ -1679,40 +1682,17 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                 <label style={s.label}>Password * <input required type="password" style={s.input} value={facultyForm.password} onChange={e => setFacultyForm({ ...facultyForm, password: e.target.value })} placeholder="Set Password" /></label>
                 <label style={s.label}>Phone Number <input style={s.input} value={facultyForm.phone} onChange={e => setFacultyForm({ ...facultyForm, phone: e.target.value })} placeholder="+91 9876543210" /></label>
                 <label style={s.label}>
-                  Department *
+                  Department / Branch *
                   <select
                     required
                     style={s.input}
                     value={facultyDeptId}
-                    onChange={e => {
-                      setFacultyDeptId(e.target.value);
-                      setFacultyForm({ ...facultyForm, class_id: '' });
-                    }}
+                    onChange={e => setFacultyDeptId(e.target.value)}
                   >
-                    <option value="">-- Select Department --</option>
+                    <option value="">-- Select Department / Branch --</option>
                     {hierarchy.flatMap((p: any) => p.departments || []).map((d: any) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ ...s.label, opacity: facultyDeptId ? 1 : 0.6 }}>
-                  Assigned Class *
-                  <select
-                    required
-                    disabled={!facultyDeptId}
-                    style={s.input}
-                    value={facultyForm.class_id}
-                    onChange={e => setFacultyForm({ ...facultyForm, class_id: e.target.value })}
-                  >
-                    <option value="">
-                      {facultyDeptId ? '-- Select Class --' : '-- Select Department First --'}
-                    </option>
-                    {tpoSelectedClasses.map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
                       </option>
                     ))}
                   </select>
@@ -1756,69 +1736,341 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
       )}
 
 
-      {/* ── STUDENTS DIRECTORY & HIERARCHICAL NAV ── */}
+      {/* ── STUDENTS DIRECTORY & PROFILE CHANGE REQUESTS ── */}
       {tab === 'students' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {showBulkUpload && (
-            <div style={s.formCard}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    Bulk Student Master Upload
-                  </h3>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    Upload Excel sheets conforming to the standard canonical template.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowBulkUpload(false)}
+          {/* Sub Navigation Bar for Students Tab */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
+            <div style={{ display: 'inline-flex', background: 'var(--card-bg, #FFFFFF)', padding: 4, borderRadius: 10, border: '1px solid var(--border-color)', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => setStudentSubTab('directory')}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: studentSubTab === 'directory' ? '#2563EB' : 'transparent',
+                  color: studentSubTab === 'directory' ? '#FFFFFF' : 'var(--text-secondary)',
+                  fontWeight: studentSubTab === 'directory' ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <UsersIcon size={16} />
+                <span>Student Directory</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStudentSubTab('updates');
+                  loadPendingUpdates();
+                }}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: studentSubTab === 'updates' ? '#2563EB' : 'transparent',
+                  color: studentSubTab === 'updates' ? '#FFFFFF' : 'var(--text-secondary)',
+                  fontWeight: studentSubTab === 'updates' ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <CheckCircleIcon size={16} />
+                <span>Profile Change Requests</span>
+                {pendingUpdates.length > 0 && (
+                  <span
+                    style={{
+                      background: studentSubTab === 'updates' ? '#FFFFFF' : '#EF4444',
+                      color: studentSubTab === 'updates' ? '#2563EB' : '#FFFFFF',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: 12,
+                    }}
+                  >
+                    {pendingUpdates.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {studentSubTab === 'updates' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="text"
+                  placeholder="Filter by Name or Roll No..."
+                  value={updatesSearchQuery}
+                  onChange={(e) => setUpdatesSearchQuery(e.target.value)}
                   style={{
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
+                    padding: '8px 12px',
                     borderRadius: 8,
-                    padding: '6px 12px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    minWidth: 240,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={loadPendingUpdates}
+                  disabled={updatesLoading}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--input-bg)',
                     color: 'var(--text-secondary)',
                     cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    display: 'inline-flex',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    display: 'flex',
                     alignItems: 'center',
                     gap: 6,
                   }}
                 >
-                  <CloseIcon size={14} />
-                  <span>Close</span>
+                  <RefreshIcon size={14} />
+                  <span>{updatesLoading ? 'Syncing...' : 'Refresh'}</span>
                 </button>
               </div>
-              <BulkStudentUpload
-                token={token}
-                institutionId={institutionId}
-                apiUrl={API}
-                onUploadSuccess={() => {
-                  flash('Bulk student data uploaded successfully!');
-                  loadStudents();
-                  loadHierarchy();
-                }}
-              />
-            </div>
-          )}
+            )}
+          </div>
 
-          {studentsLoading ? (
-            <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
-              <Loader color="#3B82F6" />
-            </div>
+          {studentSubTab === 'directory' ? (
+            <>
+              {showBulkUpload && (
+                <div style={s.formCard}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        Bulk Student Master Upload
+                      </h3>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        Upload Excel sheets conforming to the standard canonical template.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowBulkUpload(false)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 8,
+                        padding: '6px 12px',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <CloseIcon size={14} />
+                      <span>Close</span>
+                    </button>
+                  </div>
+                  <BulkStudentUpload
+                    token={token}
+                    institutionId={institutionId}
+                    apiUrl={API}
+                    onUploadSuccess={() => {
+                      flash('Bulk student data uploaded successfully!');
+                      loadStudents();
+                      loadHierarchy();
+                    }}
+                  />
+                </div>
+              )}
+
+              {studentsLoading ? (
+                <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
+                  <Loader color="#3B82F6" />
+                </div>
+              ) : (
+                <TpoStudentHierarchyView
+                  students={students}
+                  hierarchy={hierarchy}
+                  programName={_tpoProgramName || 'All Programs'}
+                  onRefresh={() => {
+                    loadStudents();
+                    loadHierarchy();
+                    flash('Students & hierarchy refreshed!');
+                  }}
+                  onShowBulkUpload={() => setShowBulkUpload(!showBulkUpload)}
+                  showBulkUpload={showBulkUpload}
+                />
+              )}
+            </>
           ) : (
-            <TpoStudentHierarchyView
-              students={students}
-              hierarchy={hierarchy}
-              programName={_tpoProgramName || 'All Programs'}
-              onRefresh={() => {
-                loadStudents();
-                loadHierarchy();
-                flash('Students & hierarchy refreshed!');
-              }}
-              onShowBulkUpload={() => setShowBulkUpload(!showBulkUpload)}
-              showBulkUpload={showBulkUpload}
-            />
+            /* ── TPO PENDING PROFILE UPDATE REQUESTS ── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Student Profile Update Requests
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Review, approve, or reject field modifications submitted by students.
+                  </p>
+                </div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#3B82F6' }}>
+                  {pendingUpdates.length} Pending
+                </div>
+              </div>
+
+              {updatesLoading ? (
+                <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
+                  <Loader color="#3B82F6" />
+                </div>
+              ) : pendingUpdates.filter(u =>
+                  (u.roll_number?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase()) ||
+                  (u.student_name?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase())
+                ).length === 0 ? (
+                <div
+                  style={{
+                    padding: '48px 24px',
+                    textAlign: 'center',
+                    background: 'var(--card-bg, #FFFFFF)',
+                    borderRadius: 16,
+                    border: '1px dashed var(--border-color)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <div style={{ fontSize: '1.8rem', marginBottom: 8 }}>✓</div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                    No Pending Profile Changes
+                  </div>
+                  <div style={{ fontSize: '0.85rem', marginTop: 4 }}>
+                    {updatesSearchQuery ? 'No change requests match your search criteria.' : 'All student profiles are up to date! New modification requests will appear here.'}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: 16 }}>
+                  {pendingUpdates
+                    .filter(u =>
+                      (u.roll_number?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase()) ||
+                      (u.student_name?.toLowerCase() || '').includes(updatesSearchQuery.toLowerCase())
+                    )
+                    .map((upd) => (
+                      <div
+                        key={upd.id}
+                        style={{
+                          background: 'var(--card-bg, #FFFFFF)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 16,
+                          padding: 20,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: 16,
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                            <div>
+                              <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                {upd.student_name}
+                              </h4>
+                              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                                Roll: <strong style={{ color: 'var(--text-primary)' }}>{upd.roll_number}</strong>
+                                {upd.department_id && ` • Dept: ${upd.department_id}`}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--input-bg)', padding: '3px 8px', borderRadius: 6 }}>
+                              {upd.requested_at ? new Date(upd.requested_at).toLocaleDateString() : 'Pending'}
+                            </span>
+                          </div>
+
+                          <div style={{ background: 'var(--input-bg)', border: '1px solid var(--border-color)', borderRadius: 10, padding: 12 }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                              Requested Field Modifications
+                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>
+                                  <th style={{ padding: '4px 8px' }}>Field</th>
+                                  <th style={{ padding: '4px 8px' }}>Current</th>
+                                  <th style={{ padding: '4px 8px' }}>Proposed</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.keys(upd.requested_changes || {}).map((key) => (
+                                  <tr key={key} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                      {key.replace(/_/g, ' ').toUpperCase()}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', color: '#EF4444', textDecoration: 'line-through' }}>
+                                      {Array.isArray(upd.current_state?.[key])
+                                        ? upd.current_state[key].join(', ')
+                                        : String(upd.current_state?.[key] ?? '—')}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', color: '#10B981', fontWeight: 700 }}>
+                                      {Array.isArray(upd.requested_changes[key])
+                                        ? upd.requested_changes[key].join(', ')
+                                        : String(upd.requested_changes[key])}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border-color)' }}>
+                          <button
+                            type="button"
+                            disabled={actionInProgressId === upd.id}
+                            onClick={() => handleRejectUpdate(upd.id)}
+                            style={{
+                              padding: '7px 16px',
+                              borderRadius: 8,
+                              border: '1.5px solid #EF4444',
+                              background: 'transparent',
+                              color: '#EF4444',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              cursor: actionInProgressId === upd.id ? 'not-allowed' : 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            Reject Changes
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionInProgressId === upd.id}
+                            onClick={() => handleApproveUpdate(upd.id)}
+                            style={{
+                              padding: '7px 20px',
+                              borderRadius: 8,
+                              border: 'none',
+                              background: '#10B981',
+                              color: '#FFFFFF',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              cursor: actionInProgressId === upd.id ? 'not-allowed' : 'pointer',
+                              boxShadow: '0 2px 8px rgba(16,185,129,0.3)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {actionInProgressId === upd.id ? 'Merging...' : 'Merge Updates'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

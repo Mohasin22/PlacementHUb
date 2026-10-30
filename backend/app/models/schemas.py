@@ -30,7 +30,7 @@ class TokenResponse(BaseModel):
 # Academic Hierarchy Setup schemas
 class DepartmentCreate(BaseModel):
     name: str
-    classes: List[str]  # e.g., ["CSE-A", "CSE-B"]
+    classes: Optional[List[str]] = []  # Deprecated: classes/sections are no longer used
 
 class ProgramCreate(BaseModel):
     name: str

@@ -1,3 +1,4 @@
+import { getSafeUrl } from '../utils/safeUrl';
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -6,15 +7,16 @@ import {
   CheckIcon,
   AlertIcon,
   RefreshIcon,
-  SparklesIcon
+  SparklesIcon,
 } from '../components/Icons';
 import { StudentAiMatchModal } from '../components/StudentAiMatchModal';
 
-const API = 'http://localhost:8000/api';
+const API = 'http://127.0.0.1:8000/api';
 
 interface StudentDrivesProps {
   token: string;
   activeTab?: string;
+  onNavigateToVerification?: () => void;
 }
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -48,6 +50,8 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
   const [success, setSuccess] = useState<string | null>(null);
   const [aiMatchDrive, setAiMatchDrive] = useState<any | null>(null);
 
+
+
   useEffect(() => {
     if (activeTab === 'events') setTab('events');
     else if (activeTab === 'drives') setTab('feed');
@@ -64,7 +68,11 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
         fetch(`${API}/drives/applications/track`, { headers }),
         fetch(`${API}/students/events`, { headers }),
       ]);
-      if (feedRes.ok) setDrives(await feedRes.json());
+
+      if (feedRes.ok) {
+        setDrives(await feedRes.json());
+      }
+
       if (trackRes.ok) setApplications(await trackRes.json());
       if (eventsRes.ok) setEvents(await eventsRes.json());
     } catch {
@@ -223,7 +231,7 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
                     ) : (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {d.external_apply_link && (
-                          <a href={d.external_apply_link} target="_blank" rel="noreferrer" style={styles.extLink}>
+                          <a href={getSafeUrl(d.external_apply_link) || "#"} target="_blank" rel="noreferrer" style={styles.extLink}>
                             External Link
                           </a>
                         )}
@@ -233,18 +241,18 @@ export const StudentDrives: React.FC<StudentDrivesProps> = ({ token, activeTab }
                             display: 'flex',
                             alignItems: 'center',
                             gap: 6,
-                            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                            color: '#FFF',
-                            border: 'none',
-                            padding: '8px 14px',
+                            background: '#EFF6FF',
+                            color: '#2563EB',
+                            border: '1px solid #BFDBFE',
+                            padding: '7px 12px',
                             borderRadius: 8,
-                            fontWeight: 700,
+                            fontWeight: 600,
                             fontSize: '0.82rem',
                             cursor: 'pointer',
-                            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
+                            transition: 'all 0.15s ease',
                           }}
                         >
-                          <SparklesIcon size={14} color="#FFF" /> AI Match ⚡
+                          <SparklesIcon size={14} color="#2563EB" /> AI Match ⚡
                         </button>
                         <button
                           onClick={() => openApplyPreview(d)}

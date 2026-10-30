@@ -5,10 +5,10 @@ from app.db.connection import db
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-from app.db.utils import id_query, parse_id
+from app.db.utils import id_query, parse_id, sanitize_student_record
 from app.services.audit import log_audit_event
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import io
 
 router = APIRouter()
@@ -21,6 +21,14 @@ class ApplicationStatusUpdate(BaseModel):
 
 class CancelSelectionPayload(BaseModel):
     reason: Optional[str] = "Selection cancelled by TPO"
+
+class CustomExcelExportPayload(BaseModel):
+    headers: List[str]
+    rows: List[List[Any]]
+    filename: Optional[str] = None
+    sheet_title: Optional[str] = "Candidates"
+    highlight_color: Optional[str] = "FEF08A"
+    highlight_text_color: Optional[str] = "0F172A"
 
 class ExportFieldsPayload(BaseModel):
     fields: Optional[List[str]] = None
@@ -232,10 +240,22 @@ async def get_tpo_students(
     students = await students_cursor.to_list(length=2000)
     
     now_utc = datetime.now(timezone.utc)
+    # Pre-cache academic calendar and programs to eliminate N+1 DB queries inside student loop
+    cached_cal = await db.db.academic_calendars.find_one({"institution_id": institution_id, "active": True})
+    progs_cursor = db.db.programs.find({"institution_id": institution_id})
+    progs_list = await progs_cursor.to_list(length=100)
+    cached_progs = {str(p.get("id") or p["_id"]): p for p in progs_list}
+
     result = []
     for st in students:
-        # Calculate derived status
-        derived = await get_student_academic_status(st, current_date=now_utc, institute_id=institution_id)
+        # Calculate derived status using pre-cached calendar and programs
+        derived = await get_student_academic_status(
+            st,
+            current_date=now_utc,
+            institute_id=institution_id,
+            cached_calendar=cached_cal,
+            cached_programs=cached_progs
+        )
         
         # Filter by study year if requested
         if study_year is not None and derived["current_study_year"] != study_year:
@@ -270,7 +290,7 @@ async def get_tpo_students(
             "department_id": str(st.get("department_id") or st.get("academic_identity", {}).get("department_id") or ""),
             "department_name": st.get("department_name") or st.get("academic_identity", {}).get("department_name") or "General",
             "class_id": str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or ""),
-            "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "Section A",
+            "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "",
             "academic_batch_id": st.get("academic_batch_id") or st.get("academic_identity", {}).get("academic_batch_id") or "",
             "batch_label": derived["batch_label"],
             "current_study_year": derived["current_study_year"],
@@ -305,8 +325,8 @@ async def get_tpo_student_detail(
     current_user: dict = Depends(get_current_user),
     institution_id: str = Depends(get_tenant_id),
 ):
-    """Retrieve full profile details of an individual student for TPO."""
-    st = await db.db.students.find_one(id_query(student_id))
+    """Retrieve full profile details of an individual student for TPO with tenant isolation."""
+    st = await db.db.students.find_one(id_query(student_id, {"institution_id": institution_id}))
     if not st:
         raise HTTPException(status_code=404, detail="Student not found.")
         
@@ -332,7 +352,7 @@ async def get_tpo_student_detail(
         "department_id": str(st.get("department_id") or st.get("academic_identity", {}).get("department_id") or ""),
         "department_name": st.get("department_name") or st.get("academic_identity", {}).get("department_name") or "General",
         "class_id": str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or ""),
-        "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "Section A",
+        "class_name": st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "",
         "academic_batch_id": st.get("academic_batch_id") or st.get("academic_identity", {}).get("academic_batch_id") or "",
         "batch_label": derived["batch_label"],
         "current_study_year": derived["current_study_year"],
@@ -372,9 +392,28 @@ async def get_drive_applications(
     apps_cursor = db.db.applications.find({"drive_id": drive_id, "institution_id": institution_id}).sort("applied_at", -1)
     apps = await apps_cursor.to_list(length=1000)
     
+    student_ids = [str(a["student_id"]) for a in apps if "student_id" in a]
+    parsed_ids = [parse_id(sid) for sid in student_ids]
+    students_cursor = db.db.students.find({
+        "": [
+            {"_id": {"": parsed_ids}},
+            {"id": {"": student_ids}},
+            {"student_id": {"": student_ids}}
+        ]
+    })
+    students_list = await students_cursor.to_list(length=max(1, len(student_ids) + 10))
+    students_by_id = {}
+    for st in students_list:
+        sanitize_student_record(st)
+        students_by_id[str(st.get("_id", ""))] = st
+        if "id" in st:
+            students_by_id[str(st["id"])] = st
+        if "student_id" in st:
+            students_by_id[str(st["student_id"])] = st
+
     app_details = []
     for app in apps:
-        student = await db.db.students.find_one(id_query(app["student_id"]))
+        student = students_by_id.get(str(app["student_id"]))
         # Use snapshot data if present, otherwise fall back to live profile
         p_snap = app.get("profile_snapshot") or {}
         a_snap = app.get("academic_snapshot") or {}
@@ -629,34 +668,67 @@ async def get_drive_candidate_pool(
         roll = st.get("roll_number") or st.get("student_id") or ""
         dept_name = st.get("department_name") or st.get("academic_identity", {}).get("department_name") or "General"
         dept_id = str(st.get("department_id") or st.get("academic_identity", {}).get("department_id") or dept_name)
-        class_name = st.get("class_name") or st.get("academic_identity", {}).get("class_name") or "Section A"
-        class_id = str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or class_name)
+        class_name = st.get("class_name") or st.get("academic_identity", {}).get("class_name") or ""
+        class_id = str(st.get("class_id") or st.get("academic_identity", {}).get("class_id") or "")
 
         cgpa = float(st.get("cgpa") or st.get("education", {}).get("undergraduate", {}).get("normalized_cgpa") or 0.0)
         active_backlogs = int(st.get("active_backlogs") if st.get("active_backlogs") is not None else st.get("eligibility_data", {}).get("current_backlogs", 0))
         tenth_pct = st.get("education", {}).get("secondary", {}).get("normalized_percentage")
         twelfth_pct = st.get("education", {}).get("higher_secondary_or_diploma", {}).get("normalized_percentage")
 
+        p_snap = (existing_app.get("profile_snapshot") or {}) if existing_app else {}
+        a_snap = (existing_app.get("academic_snapshot") or {}) if existing_app else {}
+        st_contact = st.get("contact") or {}
+        st_emails = st.get("emails") or {}
+        st_edu = st.get("education") or {}
+        st_acad = st.get("academic_identity") or {}
+        st_links = st.get("links") or st.get("social_links") or {}
+        p_links = p_snap.get("links") or {}
+
+        inst_email = st_contact.get("institutional_email") or st_emails.get("institute") or p_snap.get("institutional_email") or ""
+        pers_email = st_contact.get("personal_email") or st_emails.get("personal") or p_snap.get("personal_email") or ""
+        mobile = st.get("mobile") or st_contact.get("mobile") or p_snap.get("mobile") or ""
+        prog_name = st.get("program_name") or st_acad.get("program_name") or p_snap.get("program") or ""
+        ug_pct = st_edu.get("undergraduate", {}).get("normalized_percentage") if isinstance(st_edu.get("undergraduate"), dict) else a_snap.get("ug_percentage")
+        skills = st.get("skills") or p_snap.get("skills") or []
+        projects = st.get("projects") or p_snap.get("projects") or []
+        internships = st.get("internships") or p_snap.get("internships") or []
+        certifications = st.get("certifications") or p_snap.get("certifications") or []
+        linkedin = st_links.get("linkedin") or p_links.get("linkedin") or ""
+        github = st_links.get("github") or p_links.get("github") or ""
+        portfolio = st_links.get("portfolio") or p_links.get("portfolio") or ""
+
         candidates.append({
             "student_id": st_id,
             "name": name,
             "roll_number": roll,
-            "email": st.get("contact", {}).get("institutional_email") or st.get("emails", {}).get("institute") or st.get("contact", {}).get("personal_email") or "",
-            "mobile": st.get("mobile") or st.get("contact", {}).get("mobile") or "",
+            "email": inst_email or pers_email or "",
+            "institutional_email": inst_email,
+            "personal_email": pers_email,
+            "mobile": mobile,
             "department_id": dept_id,
             "department_name": dept_name,
             "class_id": class_id,
             "class_name": class_name,
+            "program_name": prog_name,
             "current_study_year": derived.get("current_study_year", 4),
             "study_year_label": derived.get("study_year_label", "4th Year"),
-            "passout_year": st.get("passout_year") or st.get("academic_identity", {}).get("expected_graduation_year") or st.get("academic_identity", {}).get("graduation_year"),
+            "passout_year": st.get("passout_year") or st_acad.get("expected_graduation_year") or st_acad.get("graduation_year") or p_snap.get("passout_year"),
             "cgpa": cgpa,
+            "ug_percentage": ug_pct,
             "active_backlogs": active_backlogs,
             "total_backlogs": int(st.get("total_backlogs") if st.get("total_backlogs") is not None else st.get("eligibility_data", {}).get("backlog_count", 0)),
-            "tenth_percentage": tenth_pct,
-            "twelfth_percentage": twelfth_pct,
+            "tenth_percentage": tenth_pct or a_snap.get("tenth_percentage"),
+            "twelfth_percentage": twelfth_pct or a_snap.get("twelfth_percentage"),
             "gender": st.get("gender") or st.get("identity", {}).get("gender") or "Not Specified",
-            "resume_url": st.get("resume_url") or st.get("documents", {}).get("resume") or "",
+            "resume_url": st.get("resume_url") or st.get("documents", {}).get("resume") or p_snap.get("resume_url") or (existing_app.get("resume_version") if existing_app else ""),
+            "skills": skills,
+            "projects": projects,
+            "internships": internships,
+            "certifications": certifications,
+            "linkedin": linkedin,
+            "github": github,
+            "portfolio": portfolio,
             "is_eligible": is_el,
             "eligibility_reasons": reasons,
             "eligibility_breakdown": breakdown,
@@ -1052,6 +1124,105 @@ async def export_drive_applications_for_hr(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+@router.post("/drives/{drive_id}/export-custom-excel", dependencies=[Depends(RoleChecker(["TPO", "Dean"]))])
+async def export_custom_drive_excel(
+    drive_id: str,
+    payload: CustomExcelExportPayload,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id),
+):
+    """
+    Exports candidate student sheet to Excel (.xlsx) with highlighted column headings.
+    Features header fill highlighting, bold font, freeze panes, border styling, and auto column widths.
+    """
+    drive = await db.db.placement_drives.find_one(id_query(drive_id))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = (payload.sheet_title or "Candidates")[:31]
+
+    # Write headers
+    headers = payload.headers or ["Candidate"]
+    ws.append(headers)
+    ws.row_dimensions[1].height = 28
+
+    # Clean hex colors
+    raw_bg = (payload.highlight_color or "FEF08A").lstrip("#").upper()
+    if len(raw_bg) != 6 or not all(c in "0123456789ABCDEF" for c in raw_bg):
+        raw_bg = "FEF08A"
+
+    raw_fg = (payload.highlight_text_color or "0F172A").lstrip("#").upper()
+    if len(raw_fg) != 6 or not all(c in "0123456789ABCDEF" for c in raw_fg):
+        raw_fg = "0F172A"
+
+    header_fill = PatternFill(start_color=raw_bg, end_color=raw_bg, fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color=raw_fg)
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    header_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='medium', color='94A3B8'),
+        bottom=Side(style='medium', color='334155')
+    )
+
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
+        cell.border = header_border
+
+    # Data rows styling
+    data_border = Border(
+        left=Side(style='thin', color='E2E8F0'),
+        right=Side(style='thin', color='E2E8F0'),
+        top=Side(style='thin', color='E2E8F0'),
+        bottom=Side(style='thin', color='E2E8F0')
+    )
+    data_font = Font(name="Calibri", size=10, color="1E293B")
+    data_align = Alignment(vertical="center")
+
+    for row_idx, row_values in enumerate(payload.rows, start=2):
+        ws.append(row_values)
+        ws.row_dimensions[row_idx].height = 20
+        for cell in ws[row_idx]:
+            cell.font = data_font
+            cell.alignment = data_align
+            cell.border = data_border
+
+    # Auto-fit column widths
+    for column in ws.columns:
+        max_len = max((len(str(cell.value or '')) for cell in column), default=10)
+        col_letter = column[0].column_letter
+        ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 50)
+
+    # Freeze header row so column headings stay visible when scrolling
+    ws.freeze_panes = "A2"
+
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+
+    company_name = (drive.get("company_name") if drive else "Placement_Drive").replace(" ", "_")
+    safe_filename = payload.filename or f"{company_name}_Candidates.xlsx"
+    if not safe_filename.endswith(".xlsx"):
+        safe_filename += ".xlsx"
+
+    await log_audit_event(
+        action="excel_candidates_exported",
+        actor=current_user["email"],
+        actor_role=current_user.get("role", "TPO"),
+        entity_type="PlacementDrive",
+        entity_id=drive_id,
+        institution_id=institution_id,
+        details={"record_count": len(payload.rows), "columns": headers}
+    )
+
+    return StreamingResponse(
+        file_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+    )
+
 # ── Seminar / Event Scheduling ──────────────────────────────────────────────
 class EventCreatePayload(BaseModel):
     title: str
@@ -1166,4 +1337,67 @@ async def remove_tpo_faculty(
     )
 
     return {"message": f"Faculty Coordinator '{faculty.get('name')}' removed successfully."}
+
+# ── Student Profile Update Reviews for TPO ────────────────────────────────────
+
+@router.get("/reviews/updates", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def get_tpo_pending_profile_updates(
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """Returns all pending student profile updates for TPO review."""
+    updates_cursor = db.db.student_pending_updates.find({
+        "institution_id": institution_id,
+        "status": "pending"
+    }).sort("requested_at", -1)
+    updates = await updates_cursor.to_list(length=1000)
+    for upd in updates:
+        upd["id"] = str(upd["_id"])
+        del upd["_id"]
+    return updates
+
+@router.post("/reviews/updates/{update_id}/approve", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def approve_student_profile_update(
+    update_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """TPO approves and merges student profile updates into canonical student record."""
+    update = await db.db.student_pending_updates.find_one(id_query(update_id))
+    if not update:
+        raise HTTPException(status_code=404, detail="Update request not found.")
+        
+    student_id = update["student_id"]
+    await db.db.students.update_one(id_query(student_id), {"$set": update["requested_changes"]})
+    await db.db.student_pending_updates.delete_one(id_query(update_id))
+
+    await log_audit_event(
+        action="tpo_approved_student_profile_update",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="StudentPendingUpdate",
+        entity_id=update_id,
+        institution_id=institution_id,
+        details={"student_id": student_id, "changes": update["requested_changes"]}
+    )
+    return {"message": "Student profile updates applied successfully by TPO."}
+
+@router.post("/reviews/updates/{update_id}/reject", dependencies=[Depends(RoleChecker(["TPO"]))])
+async def reject_student_profile_update(
+    update_id: str,
+    current_user: dict = Depends(get_current_user),
+    institution_id: str = Depends(get_tenant_id)
+):
+    """TPO rejects student profile updates."""
+    await db.db.student_pending_updates.delete_one(id_query(update_id))
+
+    await log_audit_event(
+        action="tpo_rejected_student_profile_update",
+        actor=current_user["email"],
+        actor_role="TPO",
+        entity_type="StudentPendingUpdate",
+        entity_id=update_id,
+        institution_id=institution_id
+    )
+    return {"message": "Student profile updates rejected by TPO."}
 

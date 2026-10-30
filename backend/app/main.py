@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.connection import connect_to_mongo, close_mongo_connection
-from app.routes import auth, institution, student, faculty, drive, tpo, files, dean, profile, analytics, resume, academic, ai
+from app.config import settings
+from app.db.connection import connect_to_mongo, close_mongo_connection, db
+from app.routes import auth, institution, student, faculty, drive, tpo, files, dean, profile, analytics, resume, academic, ai, gdrive_vault, verification
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -24,10 +25,10 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configure CORS
+# Configure CORS with explicit allowed origins to avoid wildcard credentials vulnerability
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,6 +39,9 @@ app.add_middleware(
 async def startup_event():
     logger.info("Initializing API services...")
     await connect_to_mongo()
+    from app.db.init_indexes import initialize_database_indexes
+    if db.db is not None:
+        await initialize_database_indexes(db.db)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -60,8 +64,9 @@ app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(analytics.router, prefix="/api/tpo/analytics", tags=["Analytics"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume Intelligence"])
 app.include_router(ai.router, prefix="/api/ai", tags=["AI System"])
-
-
+app.include_router(gdrive_vault.router, prefix="/api/students/gdrive-vault", tags=["Google Drive PLACEMENT Vault"])
+app.include_router(verification.student_verification_router, prefix="/api/student/verification", tags=["Professional Verification"])
+app.include_router(verification.auth_callback_router, prefix="/api/auth", tags=["OAuth Callbacks"])
 
 @app.get("/")
 def read_root():
