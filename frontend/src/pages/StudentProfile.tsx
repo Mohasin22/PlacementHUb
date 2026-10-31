@@ -587,7 +587,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
           { key: 'skills', label: 'Skills & Preferences', icon: CodeIcon },
           {
             key: 'gdrive_vault',
-            label: 'Google Drive PLACEMENT Vault',
+            label: 'Drive Placement Vault',
             icon: GoogleDriveIcon,
             badge: profile?.gdrive_vault?.is_connected
               ? (profile?.gdrive_vault?.verification_report?.overall_result === 'ALL_VERIFIED' ? '✓ Verified' : 'AI Active')

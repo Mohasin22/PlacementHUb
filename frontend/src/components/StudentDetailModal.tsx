@@ -374,7 +374,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           border: '1px solid var(--border-color, rgba(0,0,0,0.1))',
           borderRadius: 20,
           width: '100%',
-          maxWidth: 960,
+          maxWidth: 1060,
           maxHeight: '92vh',
           display: 'flex',
           flexDirection: 'column',
@@ -390,6 +390,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             padding: '22px 28px',
             color: '#FFFFFF',
             position: 'relative',
+            flexShrink: 0,
           }}
         >
           {/* Close Button */}
@@ -617,62 +618,88 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
         </div>
 
-        {/* ── 4 CLEAN TABS ── */}
+        {/* ── 5 CLEAN NAVIGATION TABS ── */}
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'stretch',
             borderBottom: '1px solid var(--border-color, rgba(0,0,0,0.08))',
             background: 'var(--bg-main, #F8FAFC)',
-            padding: '0 24px',
-            overflowX: 'auto',
-            gap: 4,
+            padding: '6px 16px 0 16px',
+            gap: 6,
+            flexShrink: 0,
+            overflowX: 'hidden',
+            width: '100%',
+            boxSizing: 'border-box',
           }}
         >
           {[
-            { id: 'academics', label: 'Academics & SGPAs', icon: <AnalyticsIcon size={16} color="currentColor" /> },
-            { id: 'education', label: 'Education History', icon: <GraduationCapIcon size={16} color="currentColor" /> },
-            { id: 'skills', label: 'Skills & Projects', icon: <CodeIcon size={16} color="currentColor" />, highlight: resumeDoc.hasUrl || techCertsDoc.hasUrl },
-            { id: 'gdrive_vault', label: 'Google Drive PLACEMENT Vault', icon: <GoogleDriveIcon size={16} />, highlight: true },
-            { id: 'contact', label: 'Personal & Contact', icon: <UserIcon size={16} color="currentColor" /> },
-          ].map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id as any)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '13px 18px',
-                border: 'none',
-                background: 'transparent',
-                fontSize: '0.88rem',
-                fontWeight: activeTab === t.id ? 700 : 500,
-                color: activeTab === t.id ? '#2563EB' : 'var(--text-secondary, #64748B)',
-                borderBottom: activeTab === t.id ? '3px solid #2563EB' : '3px solid transparent',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {t.icon}
-              <span>{t.label}</span>
-              {t.id === 'skills' && resumeDoc.hasUrl && (
-                <span
-                  style={{
-                    background: 'rgba(34, 197, 94, 0.15)',
-                    color: '#16A34A',
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    padding: '1px 6px',
-                    borderRadius: 10,
-                  }}
-                >
-                  Resume
+            { id: 'academics', label: 'Academics & SGPA', icon: <AnalyticsIcon size={18} color="currentColor" /> },
+            { id: 'education', label: 'Education History', icon: <GraduationCapIcon size={18} color="currentColor" /> },
+            { id: 'skills', label: 'Skills & Projects', icon: <CodeIcon size={18} color="currentColor" />, highlight: resumeDoc.hasUrl || techCertsDoc.hasUrl },
+            { id: 'gdrive_vault', label: 'Drive Placement Vault', icon: <GoogleDriveIcon size={18} />, highlight: true },
+            { id: 'contact', label: 'Personal & Contact', icon: <UserIcon size={18} color="currentColor" /> },
+          ].map((t) => {
+            const isActive = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id as any)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  padding: '13px 8px',
+                  border: 'none',
+                  borderRadius: '10px 10px 0 0',
+                  background: isActive ? 'var(--card-bg, #FFFFFF)' : 'transparent',
+                  fontSize: '0.92rem',
+                  fontWeight: isActive ? 700 : 600,
+                  color: isActive ? '#2563EB' : 'var(--text-secondary, #64748B)',
+                  borderBottom: isActive ? '3px solid #2563EB' : '3px solid transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
+                  boxShadow: isActive ? '0 -2px 8px rgba(0,0,0,0.04)' : 'none',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'rgba(0,0,0,0.03)';
+                    e.currentTarget.style.color = 'var(--text-primary, #0F172A)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--text-secondary, #64748B)';
+                  }
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  {t.icon}
                 </span>
-              )}
-            </button>
-          ))}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
+                {t.id === 'skills' && resumeDoc.hasUrl && (
+                  <span
+                    style={{
+                      background: 'rgba(34, 197, 94, 0.15)',
+                      color: '#16A34A',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '1px 6px',
+                      borderRadius: 10,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Resume
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── TAB CONTENT ── */}
@@ -681,6 +708,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             padding: 24,
             overflowY: 'auto',
             flex: 1,
+            minHeight: 0,
             display: 'flex',
             flexDirection: 'column',
             gap: 20,
@@ -1806,6 +1834,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexShrink: 0,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
