@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { StudentDetailModal } from './StudentDetailModal';
+import { getDepartmentCode } from '../utils/departmentUtils';
 import { StudentAvatar } from './StudentAvatar';
 import {
   BuildingIcon,
@@ -69,6 +70,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
     const deptMap = new Map<string, {
       id: string;
       name: string;
+      code?: string;
       students: any[];
     }>();
 
@@ -79,10 +81,12 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
         depts.forEach((dept: any) => {
           const dId = String(dept.id || dept.name).trim();
           const dName = dept.name || 'General Department';
+          const dCode = dept.code || '';
           if (!deptMap.has(dId)) {
             deptMap.set(dId, {
               id: dId,
               name: dName,
+              code: dCode,
               students: [],
             });
           }
@@ -149,6 +153,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
       return {
         id: d.id,
         name: d.name,
+        code: d.code,
         students: dStudents,
         studentCount: dStudents.length,
         avgCgpa: dAvgCgpa,
@@ -544,12 +549,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
             }}
           >
             {departmentList.map((dept) => {
-              const deptInitials = dept.name
-                .split(' ')
-                .map((w) => w[0])
-                .join('')
-                .toUpperCase()
-                .slice(0, 3);
+              const deptCode = getDepartmentCode(dept);
 
               const resumeRate = dept.studentCount > 0
                 ? Math.round((dept.resumesUploaded / dept.studentCount) * 100)
@@ -614,14 +614,14 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                           border: '1px solid rgba(255, 255, 255, 0.3)',
                         }}
                       >
-                        {deptInitials}
+                        {deptCode}
                       </div>
                       <div>
                         <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, letterSpacing: '-0.01em' }}>
                           {dept.name}
                         </h3>
                         <span style={{ fontSize: '0.78rem', opacity: 0.85 }}>
-                          Department Code: {deptInitials}
+                          Department Code: {deptCode}
                         </span>
                       </div>
                     </div>
@@ -769,7 +769,7 @@ export const TpoStudentHierarchyView: React.FC<TpoStudentHierarchyViewProps> = (
                 </span>
               </div>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {selectedDepartment.batchLabel} &bull; {selectedDepartment.studyYearLabel} &bull; {selectedDepartment.semesterLabel}
+                Department Code: <strong>{getDepartmentCode(selectedDepartment)}</strong> &bull; {selectedDepartment.batchLabel} &bull; {selectedDepartment.studyYearLabel} &bull; {selectedDepartment.semesterLabel}
               </p>
             </div>
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from bson import ObjectId
 from app.services.security import hash_password
+from app.services.department_normalizer import get_canonical_dept_code
 
 router = APIRouter()
 
@@ -150,6 +151,7 @@ async def get_institution_hierarchy(institution_id: str):
         for dept in depts:
             dept_id = dept.get("id") or str(dept["_id"])
             dept_obj_id = str(dept["_id"])
+            dept_name = dept.get("department_name") or dept.get("name", "Unknown")
             classes_cursor = db.db.classes.find({
                 "$or": [{"department_id": dept_id}, {"department_id": dept_obj_id}]
             })
@@ -157,7 +159,8 @@ async def get_institution_hierarchy(institution_id: str):
             
             departments_data.append({
                 "id": dept_id,
-                "name": dept.get("department_name") or dept.get("name", "Unknown"),
+                "name": dept_name,
+                "code": dept.get("code") or dept.get("department_code") or get_canonical_dept_code(dept_name),
                 "classes": [
                     {
                         "id": str(c.get("id") or c["_id"]),

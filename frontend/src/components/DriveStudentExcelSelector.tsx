@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import { getDepartmentCode } from '../utils/departmentUtils';
 import {
   FileSpreadsheetIcon,
   FilterIcon,
@@ -514,7 +515,10 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
       // 2. Substring matching
       if (branchClean && (branchClean.includes(ad) || ad.includes(branchClean))) return true;
 
-      // 3. Initials / Acronym matching (e.g. "Computer Science & Engineering" -> "cse")
+      // 3. Canonical code and initials matching (e.g. "Computer Science and Engineering" -> "cse")
+      const deptCodeClean = getDepartmentCode(branchClean).toLowerCase();
+      if (deptCodeClean && (deptCodeClean === ad || ad === deptCodeClean)) return true;
+
       const initials = branchClean
         .split(/[\s,&/-]+/)
         .filter(w => !['and', '&', 'of', 'in', 'the'].includes(w))

@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from app.db.utils import id_query, parse_id, sanitize_student_record
 from app.services.audit import log_audit_event
+from app.services.department_normalizer import get_canonical_dept_code
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import io
@@ -70,11 +71,13 @@ async def get_tpo_hierarchy(
             departments_data = []
             for dept in depts:
                 d_id = str(dept.get("id") or dept["_id"])
+                d_name = dept.get("department_name") or dept.get("name", "Unknown")
                 classes_cursor = db.db.classes.find({"$or": [{"department_id": d_id}, {"department_id": parse_id(d_id)}]})
                 classes = await classes_cursor.to_list(length=100)
                 departments_data.append({
                     "id": d_id,
-                    "name": dept.get("department_name") or dept.get("name", "Unknown"),
+                    "name": d_name,
+                    "code": dept.get("code") or dept.get("department_code") or get_canonical_dept_code(d_name),
                     "classes": [{"id": str(c.get("id") or c["_id"]), "name": c.get("class_name") or c.get("name", "Unknown")} for c in classes]
                 })
             hierarchy.append({
@@ -97,6 +100,7 @@ async def get_tpo_hierarchy(
     departments_data = []
     for dept in depts:
         dept_id = str(dept.get("id") or dept["_id"])
+        dept_name = dept.get("department_name") or dept.get("name", "Unknown Department")
         classes_cursor = db.db.classes.find({
             "$or": [{"department_id": dept_id}, {"department_id": parse_id(dept_id)}]
         })
@@ -104,7 +108,8 @@ async def get_tpo_hierarchy(
         
         departments_data.append({
             "id": dept_id,
-            "name": dept.get("department_name") or dept.get("name", "Unknown Department"),
+            "name": dept_name,
+            "code": dept.get("code") or dept.get("department_code") or get_canonical_dept_code(dept_name),
             "classes": [{"id": str(c.get("id") or c["_id"]), "name": c.get("class_name") or c.get("name", "Unknown Class")} for c in classes]
         })
         

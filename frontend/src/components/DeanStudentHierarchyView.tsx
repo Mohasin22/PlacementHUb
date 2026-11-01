@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { StudentDetailModal } from './StudentDetailModal';
 import { StudentAvatar } from './StudentAvatar';
+import { getDepartmentCode } from '../utils/departmentUtils';
 import {
   BuildingIcon,
   SearchIcon,
@@ -643,7 +644,7 @@ export const DeanStudentHierarchyView: React.FC<DeanStudentHierarchyViewProps> =
                           {dept.name}
                         </h3>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #64748B)', fontWeight: 500 }}>
-                          {dept.code ? `${dept.code} Degree` : 'Academic Department'} &bull; {dept.duration_years ? `${dept.duration_years} Years` : '4 Years'}
+                          Department Code: {getDepartmentCode(dept)} &bull; {dept.duration_years ? `${dept.duration_years} Years` : '4 Years'}
                         </span>
                       </div>
                     </div>
