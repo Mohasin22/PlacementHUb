@@ -273,6 +273,22 @@ export const HIGHLIGHT_PRESETS = [
   { label: 'Modern Indigo', color: '4F46E5', textColor: 'FFFFFF', badge: '#4F46E5', desc: 'Contemporary purple/indigo' },
 ];
 
+// Department canonical alias mappings for accurate eligibility resolution across abbreviations
+const DEPT_ALIASES: Record<string, string[]> = {
+  cse: ['computer science', 'computer science and engineering', 'computer science & engineering', 'computer science engineering', 'cse', 'cs', 'btech cse'],
+  it: ['information technology', 'info tech', 'it'],
+  ece: ['electronics and communication', 'electronics & communication', 'electronics and communication engineering', 'electronics & communication engineering', 'ece', 'ec'],
+  eee: ['electrical and electronics', 'electrical & electronics', 'electrical and electronics engineering', 'electrical & electronics engineering', 'eee', 'ee'],
+  mech: ['mechanical', 'mechanical engineering', 'mech', 'me'],
+  civil: ['civil', 'civil engineering', 'ce'],
+  aiml: ['artificial intelligence and machine learning', 'artificial intelligence & machine learning', 'aiml', 'ai&ml', 'ai/ml', 'csm', 'cse(aiml)', 'cse (aiml)'],
+  aids: ['artificial intelligence and data science', 'artificial intelligence & data science', 'aids', 'ai&ds', 'ai/ds', 'csd', 'cse(aids)', 'cse (aids)', 'data science'],
+  csbs: ['computer science and business systems', 'computer science & business systems', 'csbs'],
+  csit: ['computer science and information technology', 'computer science & information technology', 'csit'],
+  mca: ['master of computer applications', 'mca'],
+  mba: ['master of business administration', 'mba'],
+};
+
 interface DriveStudentExcelSelectorProps {
   token: string;
   drive: any;
@@ -305,8 +321,12 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
   const [filterOnlyEligible, setFilterOnlyEligible] = useState<boolean>(true);
   const [minCgpaFilter, setMinCgpaFilter] = useState<number>(drive?.min_cgpa ?? 0);
   const [maxBacklogsFilter, setMaxBacklogsFilter] = useState<number>(drive?.max_backlogs ?? 99);
-  const [minTenthFilter, setMinTenthFilter] = useState<number>(drive?.min_tenth_percentage ?? 0);
-  const [minTwelfthFilter, setMinTwelfthFilter] = useState<number>(drive?.min_twelfth_percentage ?? 0);
+  const [minTenthFilter, setMinTenthFilter] = useState<string>(
+    drive?.min_tenth_percentage ? String(drive.min_tenth_percentage) : ''
+  );
+  const [minTwelfthFilter, setMinTwelfthFilter] = useState<string>(
+    drive?.min_twelfth_percentage ? String(drive.min_twelfth_percentage) : ''
+  );
   const [genderFilter, setGenderFilter] = useState<string>(drive?.gender_filter || 'All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -400,8 +420,8 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
         // Sync defaults if not modified
         setMinCgpaFilter(data.drive.min_cgpa ?? 0);
         setMaxBacklogsFilter(data.drive.max_backlogs ?? 99);
-        setMinTenthFilter(data.drive.min_tenth_percentage ?? 0);
-        setMinTwelfthFilter(data.drive.min_twelfth_percentage ?? 0);
+        setMinTenthFilter(data.drive.min_tenth_percentage ? String(data.drive.min_tenth_percentage) : '');
+        setMinTwelfthFilter(data.drive.min_twelfth_percentage ? String(data.drive.min_twelfth_percentage) : '');
         setGenderFilter(data.drive.gender_filter || 'All');
       }
     } catch (err: any) {
@@ -422,8 +442,8 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
   const handleResetToDriveCriteria = () => {
     setMinCgpaFilter(driveDetails?.min_cgpa ?? 0);
     setMaxBacklogsFilter(driveDetails?.max_backlogs ?? 99);
-    setMinTenthFilter(driveDetails?.min_tenth_percentage ?? 0);
-    setMinTwelfthFilter(driveDetails?.min_twelfth_percentage ?? 0);
+    setMinTenthFilter(driveDetails?.min_tenth_percentage ? String(driveDetails.min_tenth_percentage) : '');
+    setMinTwelfthFilter(driveDetails?.min_twelfth_percentage ? String(driveDetails.min_twelfth_percentage) : '');
     setGenderFilter(driveDetails?.gender_filter || 'All');
     setFilterOnlyEligible(true);
     setSearchQuery('');
@@ -433,7 +453,6 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
   // ── Unique Branches (Departments) derived from candidates + hierarchy ──
   const branchOptions = useMemo(() => {
     const map = new Map<string, string>();
-    // Add allowed departments from drive
     candidates.forEach(c => {
       if (c.department_name) {
         map.set(c.department_name.trim(), c.department_name.trim());
@@ -449,6 +468,70 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
     }
     return Array.from(map.values()).sort();
   }, [candidates, hierarchy]);
+
+  // ── Robust Department Eligibility Resolver ──
+  // Accurately matches against drive allowed_departments across IDs, acronyms, names & aliases
+  const isBranchAllowedForDrive = useCallback((branchName: string, studentDeptId?: string): boolean => {
+    const rawAllowed = driveDetails?.allowed_departments;
+    if (!rawAllowed || !Array.isArray(rawAllowed) || rawAllowed.length === 0) {
+      return true; // If drive has no department restrictions, all branches are eligible
+    }
+
+    // Check if explicitly includes 'all' or 'all branches'
+    if (rawAllowed.some((ad: any) => typeof ad === 'string' && ['all', 'any', 'all branches', 'entire college'].includes(ad.trim().toLowerCase()))) {
+      return true;
+    }
+
+    const branchClean = (branchName || '').trim().toLowerCase();
+    const stIdClean = (studentDeptId || '').trim().toLowerCase();
+
+    // Map candidate student department IDs
+    const candidateMatches = candidates.filter(c => c.department_name && c.department_name.trim().toLowerCase() === branchClean);
+    const candidateDeptIds = candidateMatches.map(c => (c.department_id || '').trim().toLowerCase()).filter(Boolean);
+
+    // Map hierarchy department IDs
+    const hierarchyDeptIds: string[] = [];
+    if (Array.isArray(hierarchy)) {
+      hierarchy.forEach((prog: any) => {
+        (prog.departments || []).forEach((dept: any) => {
+          if (dept.name && dept.name.trim().toLowerCase() === branchClean && dept.id) {
+            hierarchyDeptIds.push(String(dept.id).trim().toLowerCase());
+          }
+        });
+      });
+    }
+
+    return rawAllowed.some((adItem: any) => {
+      if (!adItem) return false;
+      const ad = String(adItem).trim().toLowerCase();
+
+      // 1. Direct name or ID equality
+      if (ad === branchClean) return true;
+      if (stIdClean && ad === stIdClean) return true;
+      if (candidateDeptIds.includes(ad)) return true;
+      if (hierarchyDeptIds.includes(ad)) return true;
+
+      // 2. Substring matching
+      if (branchClean && (branchClean.includes(ad) || ad.includes(branchClean))) return true;
+
+      // 3. Initials / Acronym matching (e.g. "Computer Science & Engineering" -> "cse")
+      const initials = branchClean
+        .split(/[\s,&/-]+/)
+        .filter(w => !['and', '&', 'of', 'in', 'the'].includes(w))
+        .map(w => w[0])
+        .join('');
+      if (initials && (initials === ad || ad === initials)) return true;
+
+      // 4. Aliases dictionary
+      for (const group of Object.values(DEPT_ALIASES)) {
+        const branchInGroup = group.some(alias => branchClean.includes(alias) || alias.includes(branchClean));
+        const adInGroup = group.some(alias => ad === alias || ad.includes(alias) || alias.includes(ad));
+        if (branchInGroup && adInGroup) return true;
+      }
+
+      return false;
+    });
+  }, [driveDetails?.allowed_departments, candidates, hierarchy]);
 
   // ── Unique Years derived from candidates ──
   const yearOptions = useMemo(() => {
@@ -476,16 +559,18 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
       reasons.push(`Backlogs ${s.active_backlogs} > ${maxBacklogsFilter}`);
     }
 
-    // 10th %
-    if (minTenthFilter > 0) {
+    // 10th % (Only filter if user entered a value)
+    const tenthCutoff = parseFloat(minTenthFilter);
+    if (!isNaN(tenthCutoff) && tenthCutoff > 0) {
       const tenth = s.tenth_percentage ?? 0;
-      if (tenth < minTenthFilter) reasons.push(`10th ${tenth}% < ${minTenthFilter}%`);
+      if (tenth < tenthCutoff) reasons.push(`10th ${tenth}% < ${tenthCutoff}%`);
     }
 
-    // 12th %
-    if (minTwelfthFilter > 0) {
+    // 12th % (Only filter if user entered a value)
+    const twelfthCutoff = parseFloat(minTwelfthFilter);
+    if (!isNaN(twelfthCutoff) && twelfthCutoff > 0) {
       const twelfth = s.twelfth_percentage ?? 0;
-      if (twelfth < minTwelfthFilter) reasons.push(`12th ${twelfth}% < ${minTwelfthFilter}%`);
+      if (twelfth < twelfthCutoff) reasons.push(`12th ${twelfth}% < ${twelfthCutoff}%`);
     }
 
     // Gender Filter
@@ -496,15 +581,10 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
       }
     }
 
-    // Drive Allowed Departments (if specified)
+    // Drive Allowed Departments (Resolved with robust ID/alias resolver)
     const allowedDepts = driveDetails?.allowed_departments || [];
     if (allowedDepts.length > 0) {
-      const deptMatches = allowedDepts.some((ad: string) =>
-        ad.toLowerCase() === s.department_id?.toLowerCase() ||
-        ad.toLowerCase() === s.department_name?.toLowerCase() ||
-        s.department_name?.toLowerCase().includes(ad.toLowerCase())
-      );
-      if (!deptMatches) {
+      if (!isBranchAllowedForDrive(s.department_name || '', s.department_id)) {
         reasons.push(`Branch '${s.department_name}' not in drive allowed departments`);
       }
     }
@@ -519,13 +599,13 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
       isEligible: reasons.length === 0,
       reasons,
     };
-  }, [minCgpaFilter, maxBacklogsFilter, minTenthFilter, minTwelfthFilter, genderFilter, driveDetails]);
+  }, [minCgpaFilter, maxBacklogsFilter, minTenthFilter, minTwelfthFilter, genderFilter, driveDetails, isBranchAllowedForDrive]);
 
   // ── Filtered Students List ──
   const filteredCandidates = useMemo(() => {
     return candidates.filter(student => {
       // 1. Branch filter
-      if (selectedBranch !== 'ALL' && student.department_name !== selectedBranch) {
+      if (selectedBranch !== 'ALL' && (student.department_name || '').trim() !== selectedBranch.trim()) {
         return false;
       }
 
@@ -538,8 +618,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
         }
       }
 
-
-      // 4. Search query (Name or Roll Number)
+      // 3. Search query (Name or Roll Number)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesName = student.name.toLowerCase().includes(q);
@@ -547,7 +626,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
         if (!matchesName && !matchesRoll) return false;
       }
 
-      // 5. Eligibility criteria filter
+      // 4. Eligibility criteria filter
       const { isEligible } = evaluateStudentCustom(student);
       if (filterOnlyEligible && !isEligible) {
         return false;
@@ -557,26 +636,47 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
     });
   }, [candidates, selectedBranch, selectedYear, searchQuery, filterOnlyEligible, evaluateStudentCustom]);
 
-  // Statistics
-  const stats = useMemo(() => {
-    let eligibleCount = 0;
+  // ── Department-level student counts (Total & Eligible) ──
+  const departmentStats = useMemo(() => {
+    const deptTotals: Record<string, number> = {};
+    const deptEligible: Record<string, number> = {};
+
     candidates.forEach(c => {
-      if (evaluateStudentCustom(c).isEligible) eligibleCount++;
+      const dept = c.department_name?.trim() || 'General';
+      deptTotals[dept] = (deptTotals[dept] || 0) + 1;
+      if (evaluateStudentCustom(c).isEligible) {
+        deptEligible[dept] = (deptEligible[dept] || 0) + 1;
+      }
     });
 
-    let filteredEligibleCount = 0;
-    filteredCandidates.forEach(c => {
-      if (evaluateStudentCustom(c).isEligible) filteredEligibleCount++;
+    let overallEligibleCount = 0;
+    candidates.forEach(c => {
+      if (evaluateStudentCustom(c).isEligible) overallEligibleCount++;
     });
 
     return {
-      totalCandidates: candidates.length,
-      filteredTotal: filteredCandidates.length,
-      eligibleTotal: eligibleCount,
-      filteredEligibleTotal: filteredEligibleCount,
-      checkedCount: checkedIds.size,
+      deptTotals,
+      deptEligible,
+      overallTotal: candidates.length,
+      overallEligible: overallEligibleCount,
     };
-  }, [candidates, filteredCandidates, evaluateStudentCustom, checkedIds]);
+  }, [candidates, evaluateStudentCustom]);
+
+  // ── Separate branches into Eligible vs Other ──
+  const { eligibleBranches, otherBranches } = useMemo(() => {
+    const eligible: string[] = [];
+    const other: string[] = [];
+
+    branchOptions.forEach(branch => {
+      if (isBranchAllowedForDrive(branch)) {
+        eligible.push(branch);
+      } else {
+        other.push(branch);
+      }
+    });
+
+    return { eligibleBranches: eligible, otherBranches: other };
+  }, [branchOptions, isBranchAllowedForDrive]);
 
   // ── Checkbox Handlers ──
   const toggleStudent = (id: string) => {
@@ -864,7 +964,10 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
                 Role: <strong style={{ color: 'var(--text-primary)' }}>{driveDetails.job_role}</strong> • Package: <strong>{driveDetails.package || 'N/A'}</strong> • 
-                Cutoffs: CGPA ≥ <strong>{driveDetails.min_cgpa ?? 0}</strong>, Backlogs ≤ <strong>{driveDetails.max_backlogs ?? 0}</strong>, Batch: <strong>{driveDetails.passout_year || 'Any'}</strong>
+                Cutoffs: CGPA ≥ <strong>{driveDetails.min_cgpa ?? 0}</strong>, Backlogs ≤ <strong>{driveDetails.max_backlogs ?? 0}</strong>
+                {driveDetails.min_tenth_percentage ? <>, 10th ≥ <strong>{driveDetails.min_tenth_percentage}%</strong></> : null}
+                {driveDetails.min_twelfth_percentage ? <>, 12th ≥ <strong>{driveDetails.min_twelfth_percentage}%</strong></> : null}
+                , Batch: <strong>{driveDetails.passout_year || 'Any'}</strong>
               </p>
             </div>
           </div>
@@ -948,7 +1051,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
           }}
         >
           {/* Branch / Department Selector */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 220 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 260 }}>
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 5 }}>
               <BuildingIcon size={13} color="#3B82F6" /> 1. CHOOSE BRANCH (DEPARTMENT)
             </label>
@@ -959,7 +1062,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
               }}
               style={{
                 background: 'var(--bg-main)',
-                border: '1.5px solid #3B82F6',
+                border: selectedBranch !== 'ALL' && isBranchAllowedForDrive(selectedBranch) ? '1.5px solid #10B981' : '1.5px solid #3B82F6',
                 borderRadius: 8,
                 padding: '8px 12px',
                 color: 'var(--text-primary)',
@@ -969,17 +1072,49 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                 outline: 'none',
               }}
             >
-              <option value="ALL">🏢 All Branches (Entire College)</option>
-              {branchOptions.map(branch => {
-                const isAllowed = driveDetails.allowed_departments?.some((ad: string) =>
-                  ad.toLowerCase() === branch.toLowerCase() || branch.toLowerCase().includes(ad.toLowerCase())
-                );
-                return (
-                  <option key={branch} value={branch}>
-                    {branch} {isAllowed ? '✓ (Eligible)' : ''}
-                  </option>
-                );
-              })}
+              <option value="ALL">
+                🏢 All Branches ({departmentStats.overallEligible} / {departmentStats.overallTotal} Eligible)
+              </option>
+              {eligibleBranches.length > 0 && (
+                <optgroup label="⭐ Eligible Departments (Drive Target)">
+                  {eligibleBranches.map(branch => {
+                    const total = departmentStats.deptTotals[branch] || 0;
+                    const eligible = departmentStats.deptEligible[branch] || 0;
+                    return (
+                      <option
+                        key={branch}
+                        value={branch}
+                        style={{
+                          fontWeight: 700,
+                          color: '#10B981',
+                          background: 'var(--card-bg)',
+                        }}
+                      >
+                        ⭐ {branch} ({eligible} / {total} Eligible)
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
+              {otherBranches.length > 0 && (
+                <optgroup label="Other Departments">
+                  {otherBranches.map(branch => {
+                    const total = departmentStats.deptTotals[branch] || 0;
+                    return (
+                      <option
+                        key={branch}
+                        value={branch}
+                        style={{
+                          color: 'var(--text-secondary)',
+                          background: 'var(--card-bg)',
+                        }}
+                      >
+                        {branch} ({total} Students — Ineligible for Drive)
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
             </select>
           </div>
 
@@ -1149,17 +1284,22 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
               </select>
             </div>
 
-            {/* Min 10th % */}
+            {/* Min 10th % - No incrementer/decrementer, clean typing with no initial value */}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
               <span style={{ fontWeight: 600 }}>10th % ≥</span>
               <input
-                type="number"
-                min="0"
-                max="100"
+                type="text"
+                inputMode="decimal"
+                placeholder="None"
                 value={minTenthFilter}
-                onChange={(e) => setMinTenthFilter(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                    setMinTenthFilter(val);
+                  }
+                }}
                 style={{
-                  width: 55,
+                  width: 58,
                   padding: '5px 8px',
                   borderRadius: 6,
                   border: '1px solid var(--border-color)',
@@ -1167,21 +1307,27 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                   color: 'var(--text-primary)',
                   fontWeight: 700,
                   fontSize: '0.82rem',
+                  outline: 'none',
                 }}
               />
             </div>
 
-            {/* Min 12th % */}
+            {/* Min 12th % - No incrementer/decrementer, clean typing with no initial value */}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
               <span style={{ fontWeight: 600 }}>12th % ≥</span>
               <input
-                type="number"
-                min="0"
-                max="100"
+                type="text"
+                inputMode="decimal"
+                placeholder="None"
                 value={minTwelfthFilter}
-                onChange={(e) => setMinTwelfthFilter(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                    setMinTwelfthFilter(val);
+                  }
+                }}
                 style={{
-                  width: 55,
+                  width: 58,
                   padding: '5px 8px',
                   borderRadius: 6,
                   border: '1px solid var(--border-color)',
@@ -1189,6 +1335,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                   color: 'var(--text-primary)',
                   fontWeight: 700,
                   fontSize: '0.82rem',
+                  outline: 'none',
                 }}
               />
             </div>
@@ -1249,20 +1396,49 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Showing: <span style={{ color: '#3B82F6' }}>{stats.filteredTotal}</span> of {stats.totalCandidates} students
-            </span>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10B981' }}>
-              • {stats.filteredEligibleTotal} Eligible
-            </span>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 14px',
+                borderRadius: 10,
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                color: '#10B981',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+              }}
+            >
+              <CheckIcon size={15} color="#10B981" />
+              <span>
+                Eligible Students:{' '}
+                <strong style={{ fontSize: '1rem', color: '#10B981' }}>
+                  {selectedBranch === 'ALL'
+                    ? `${departmentStats.overallEligible} / ${departmentStats.overallTotal}`
+                    : `${departmentStats.deptEligible[selectedBranch] || 0} / ${departmentStats.deptTotals[selectedBranch] || 0}`}
+                </strong>
+                {selectedBranch !== 'ALL' ? (
+                  <span style={{ fontWeight: 600, color: 'var(--text-secondary)', marginLeft: 6 }}>
+                    ({selectedBranch})
+                  </span>
+                ) : (
+                  <span style={{ fontWeight: 600, color: 'var(--text-secondary)', marginLeft: 6 }}>
+                    (All Departments)
+                  </span>
+                )}
+              </span>
+            </div>
+
             <span
               style={{
-                fontSize: '0.85rem',
-                fontWeight: 800,
+                fontSize: '0.84rem',
+                fontWeight: 700,
                 color: checkedIds.size > 0 ? '#10B981' : 'var(--text-secondary)',
                 background: checkedIds.size > 0 ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-main)',
-                padding: '3px 10px',
-                borderRadius: 12,
+                border: `1px solid ${checkedIds.size > 0 ? 'rgba(16, 185, 129, 0.3)' : 'var(--border-color)'}`,
+                padding: '5px 12px',
+                borderRadius: 10,
               }}
             >
               ☑ {checkedIds.size} Checked for Selection
@@ -1302,7 +1478,7 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                 cursor: 'pointer',
               }}
             >
-              Check All Filtered
+              Check All
             </button>
 
             <button
@@ -1337,9 +1513,9 @@ export const DriveStudentExcelSelector: React.FC<DriveStudentExcelSelectorProps>
                 gap: 6,
                 boxShadow: '0 2px 6px rgba(16, 124, 65, 0.25)',
               }}
-              title="Select columns to export and download CSV sheet"
+              title="Select columns to export and download Excel (.xlsx) or CSV"
             >
-              <FileSpreadsheetIcon size={15} /> Export Sheet (.csv)
+              <FileSpreadsheetIcon size={15} /> Export Sheet (.xlsx / .csv)
             </button>
           </div>
         </div>
