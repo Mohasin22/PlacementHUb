@@ -438,13 +438,6 @@ export default function App() {
                         onNavigateToDrives={() => setCurrentTab('drives')}
                       />
                     )}
-                    {currentTab === 'drive_vault' && (
-                      <StudentProfile
-                        token={auth.token}
-                        defaultTab="gdrive_vault"
-                        onNavigateToDrives={() => setCurrentTab('drives')}
-                      />
-                    )}
                     {currentTab === 'drives' && (
                       <StudentDrives
                         token={auth.token}

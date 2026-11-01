@@ -22,11 +22,8 @@ import {
   UserIcon,
   UploadIcon,
   SparklesIcon,
-  GoogleDriveIcon,
 } from './Icons';
 import { StudentAvatar } from './StudentAvatar';
-import { StudentGDriveVault } from './StudentGDriveVault';
-
 interface StudentDetailModalProps {
   student: any;
   isOpen: boolean;
@@ -262,9 +259,9 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   student,
   isOpen,
   onClose,
-  token,
+  token: _token,
 }) => {
-  const [activeTab, setActiveTab] = useState<'academics' | 'education' | 'skills' | 'contact' | 'gdrive_vault'>('academics');
+  const [activeTab, setActiveTab] = useState<'academics' | 'education' | 'skills' | 'contact' >('academics');
   const [copied, setCopied] = useState(false);
 
   // Full Screen Preview Modal State
@@ -637,7 +634,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             { id: 'academics', label: 'Academics & SGPA', icon: <AnalyticsIcon size={18} color="currentColor" /> },
             { id: 'education', label: 'Education History', icon: <GraduationCapIcon size={18} color="currentColor" /> },
             { id: 'skills', label: 'Skills & Projects', icon: <CodeIcon size={18} color="currentColor" />, highlight: resumeDoc.hasUrl || techCertsDoc.hasUrl },
-            { id: 'gdrive_vault', label: 'Drive Placement Vault', icon: <GoogleDriveIcon size={18} />, highlight: true },
+
             { id: 'contact', label: 'Personal & Contact', icon: <UserIcon size={18} color="currentColor" /> },
           ].map((t) => {
             const isActive = activeTab === t.id;
@@ -1812,18 +1809,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </div>
           )}
 
-          {/* 5. GOOGLE DRIVE PLACEMENT VAULT TAB (STAFF INSPECTION) */}
-          {activeTab === 'gdrive_vault' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <StudentGDriveVault
-                token={token || JSON.parse(localStorage.getItem('auth') || '{}').token || ''}
-                studentId={student.id || student._id}
-                isStaffMode={true}
-                studentProfile={student}
-              />
-            </div>
-          )}
-        </div>
+          </div>
 
         {/* ── MODAL FOOTER ── */}
         <div

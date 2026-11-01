@@ -18,11 +18,7 @@ import {
   UploadIcon,
   RefreshIcon,
   SparklesIcon,
-  GoogleDriveIcon,
 } from '../components/Icons';
-
-import { StudentGDriveVault } from '../components/StudentGDriveVault';
-
 const API_BASE = 'http://127.0.0.1:8000/api';
 
 interface StudentProfileProps {
@@ -34,12 +30,9 @@ interface StudentProfileProps {
 
 export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTab, defaultTab }) => {
   const [profile, setProfile] = useState<any>(null);
-  type ProfileNavTab = 'basic' | 'education' | 'skills' | 'gdrive_vault';
+  type ProfileNavTab = 'basic' | 'education' | 'skills' ;
   const effectiveTab = defaultTab || initialTab;
   const [activeProfileTab, setActiveProfileTab] = useState<ProfileNavTab>(() => {
-    if (effectiveTab === 'gdrive_vault') {
-      return 'gdrive_vault';
-    }
     if (effectiveTab === 'education' || effectiveTab === 'skills') {
       return effectiveTab;
     }
@@ -48,9 +41,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
 
   useEffect(() => {
     const tab = defaultTab || initialTab;
-    if (tab === 'gdrive_vault') {
-      setActiveProfileTab('gdrive_vault');
-    } else if (tab === 'basic' || tab === 'education' || tab === 'skills') {
+    if (tab === 'basic' || tab === 'education' || tab === 'skills') {
       setActiveProfileTab(tab);
     }
   }, [initialTab, defaultTab]);
@@ -585,14 +576,7 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
           { key: 'basic', label: 'Basic Info', icon: UserIcon },
           { key: 'education', label: 'Education & Location', icon: GraduationCapIcon },
           { key: 'skills', label: 'Skills & Preferences', icon: CodeIcon },
-          {
-            key: 'gdrive_vault',
-            label: 'Drive Placement Vault',
-            icon: GoogleDriveIcon,
-            badge: profile?.gdrive_vault?.is_connected
-              ? (profile?.gdrive_vault?.verification_report?.overall_result === 'ALL_VERIFIED' ? '✓ Verified' : 'AI Active')
-              : 'Setup',
-          },
+          
         ].map((t) => {
           const isActive = activeProfileTab === t.key;
           const Icon = t.icon;
@@ -622,29 +606,13 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ token, initialTa
             >
               <Icon size={16} color="currentColor" />
               <span>{t.label}</span>
-              {t.badge && (
-                <span
-                  style={{
-                    fontSize: '0.72rem',
-                    padding: '2px 8px',
-                    borderRadius: 12,
-                    fontWeight: 700,
-                    background: t.badge.includes('✓') ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                    color: t.badge.includes('✓') ? '#15803D' : '#DC2626',
-                  }}
-                >
-                  {t.badge}
-                </span>
-              )}
+
             </button>
           );
         })}
       </div>
 
-      {/* ── GDRIVE VAULT TAB CONTENT ─────────────────────────────────────────── */}
-      {activeProfileTab === 'gdrive_vault' && (
-        <StudentGDriveVault token={token} studentProfile={profile} />
-      )}
+
 
 
 
