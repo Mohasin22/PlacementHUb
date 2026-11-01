@@ -20,6 +20,20 @@ interface AiDriveModalProps {
 
 const SAMPLE_JDS = [
   {
+    label: '⚡ Enterprise Tech (60% 10th/12th + Bond)',
+    text: `GlobalTech Services is conducting a campus recruitment drive for Graduate Software Engineers.
+Eligible Programs: B.Tech Computer Science, Information Technology, or Electronics & Communication Engineering.
+Eligibility Criteria:
+- Minimum 60% in 10th and 12th / Diploma
+- Minimum 6.5 CGPA in B.Tech
+- Zero active backlogs allowed
+- Batch: 2027 graduating students
+- Service Agreement / Bond of 2 years required upon joining
+- Core Skills: Java, Spring Boot, SQL, Object Oriented Programming
+Compensation: 7.2 LPA. Work Mode: On-campus.
+Application Deadline: 28 November 2026 at 23:59:59.`,
+  },
+  {
     label: '⚡ Software Engineer (12 LPA)',
     text: `ABC Technologies is hiring Associate Software Engineers for our Hyderabad and Bengaluru offices.
 Candidates must have a B.Tech degree in Computer Science Engineering, Information Technology, or related disciplines.
@@ -210,6 +224,9 @@ export const AiDriveModal: React.FC<AiDriveModalProps> = ({
         location: ext.location || '',
         mode: ext.mode || 'On-campus',
         min_cgpa: ext.min_cgpa ?? 0.0,
+        min_tenth_percentage: ext.min_tenth_percentage != null ? String(ext.min_tenth_percentage) : '',
+        min_twelfth_percentage: ext.min_twelfth_percentage != null ? String(ext.min_twelfth_percentage) : '',
+        additional_eligibility_criteria: ext.additional_eligibility_criteria || (ext.unmapped_criteria && ext.unmapped_criteria.length > 0 ? ext.unmapped_criteria.join('; ') : '') || '',
         max_backlogs: ext.max_backlogs ?? 99,
         passout_year: ext.passout_year || 2027,
         drive_deadline: formatDeadlineToStandard(ext.drive_deadline || ''),
@@ -277,6 +294,31 @@ export const AiDriveModal: React.FC<AiDriveModalProps> = ({
     }
   };
 
+  const handleSaveAdditionalCriteria = async (newCriteriaText: string) => {
+    if (!draft) return;
+    setError(null);
+    try {
+      const ext = {
+        ...(draft.extracted_requirements || {}),
+        additional_eligibility_criteria: newCriteriaText.trim() || null,
+      };
+      const res = await fetch(`${API_BASE}/ai/drives/drafts/${draft.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ extracted_requirements: ext }),
+      });
+      const data = await parseJsonResponse(res, 'Failed to update criteria.');
+      setDraft(data);
+      setEditForm((prev: any) => ({ ...prev, additional_eligibility_criteria: newCriteriaText }));
+      setSuccess('Additional eligibility criteria saved to drive requirements!');
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!draft) return;
     setError(null);
@@ -288,6 +330,13 @@ export const AiDriveModal: React.FC<AiDriveModalProps> = ({
         location: editForm.location,
         mode: editForm.mode,
         min_cgpa: parseFloat(editForm.min_cgpa) || 0.0,
+        min_tenth_percentage: editForm.min_tenth_percentage !== '' && !isNaN(Number(editForm.min_tenth_percentage))
+          ? parseFloat(editForm.min_tenth_percentage)
+          : null,
+        min_twelfth_percentage: editForm.min_twelfth_percentage !== '' && !isNaN(Number(editForm.min_twelfth_percentage))
+          ? parseFloat(editForm.min_twelfth_percentage)
+          : null,
+        additional_eligibility_criteria: editForm.additional_eligibility_criteria?.trim() || null,
         max_backlogs: parseInt(editForm.max_backlogs, 10) || 0,
         passout_year: parseInt(editForm.passout_year, 10),
         drive_deadline: formatDeadlineToStandard(editForm.drive_deadline),
@@ -621,6 +670,38 @@ export const AiDriveModal: React.FC<AiDriveModalProps> = ({
                         onChange={(e) => setEditForm({ ...editForm, max_backlogs: e.target.value })}
                       />
                     </div>
+                    <div>
+                      <label style={s.label}>Min 10th % (Optional)</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="e.g. 60 (optional)"
+                        style={s.input}
+                        value={editForm.min_tenth_percentage ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                            setEditForm({ ...editForm, min_tenth_percentage: val });
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={s.label}>Min 12th / Diploma % (Optional)</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="e.g. 60 (optional)"
+                        style={s.input}
+                        value={editForm.min_twelfth_percentage ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                            setEditForm({ ...editForm, min_twelfth_percentage: val });
+                          }
+                        }}
+                      />
+                    </div>
                     <div style={{ gridColumn: 'span 2' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
                         <label style={{ ...s.label, margin: 0 }}>Application Deadline (YYYY-MM-DD HH:MM:SS) *</label>
@@ -704,6 +785,19 @@ export const AiDriveModal: React.FC<AiDriveModalProps> = ({
                         onChange={(e) => setEditForm({ ...editForm, required_skills: e.target.value })}
                       />
                     </div>
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <label style={s.label}>Additional Eligibility Criteria (Optional)</label>
+                      <textarea
+                        rows={2}
+                        placeholder="e.g. 2 years service agreement / bond, minimum 70% in degree aggregate, specific certifications, shifts, etc."
+                        style={{ ...s.input, minHeight: 64, resize: 'vertical' }}
+                        value={editForm.additional_eligibility_criteria ?? ''}
+                        onChange={(e) => setEditForm({ ...editForm, additional_eligibility_criteria: e.target.value })}
+                      />
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: 4, display: 'block' }}>
+                        💡 Any special criteria or non-standard conditions mentioned in the Job Description.
+                      </span>
+                    </div>
                   </div>
                   <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                     <button onClick={() => setIsEditing(false)} style={s.cancelBtn}>Cancel</button>
@@ -754,6 +848,22 @@ export const AiDriveModal: React.FC<AiDriveModalProps> = ({
                       <span style={s.detailLbl}>Max Active Backlogs</span>
                       <span style={s.detailVal}>
                         {draft.extracted_requirements.max_backlogs ?? '0'}
+                      </span>
+                    </div>
+                    <div style={s.detailItem}>
+                      <span style={s.detailLbl}>Min 10th %</span>
+                      <span style={s.detailVal}>
+                        {draft.extracted_requirements.min_tenth_percentage != null
+                          ? `${draft.extracted_requirements.min_tenth_percentage}%`
+                          : 'Optional (Not set)'}
+                      </span>
+                    </div>
+                    <div style={s.detailItem}>
+                      <span style={s.detailLbl}>Min 12th / Diploma %</span>
+                      <span style={s.detailVal}>
+                        {draft.extracted_requirements.min_twelfth_percentage != null
+                          ? `${draft.extracted_requirements.min_twelfth_percentage}%`
+                          : 'Optional (Not set)'}
                       </span>
                     </div>
                     <div style={s.detailItem}>
@@ -817,6 +927,116 @@ export const AiDriveModal: React.FC<AiDriveModalProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* AI Detection Notice for Non-Standard / Unmapped Criteria in JD */}
+              {((draft.extracted_requirements?.unmapped_criteria && draft.extracted_requirements.unmapped_criteria.length > 0) ||
+                draft.extracted_requirements?.additional_eligibility_criteria) ? (
+                <div style={s.aiNoticeCard}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={s.aiNoticeBadgeIcon}>
+                        <SparklesIcon size={18} color="#6366F1" />
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#4338CA' }}>
+                          AI Notice: Detected Non-Standard Criteria in JD
+                        </h4>
+                        <span style={{ fontSize: '0.78rem', color: '#6366F1' }}>
+                          Found specific eligibility requirements in the JD that are not standard drive fields:
+                        </span>
+                      </div>
+                    </div>
+                    <span style={s.detectedCountPill}>
+                      {draft.extracted_requirements?.unmapped_criteria?.length || 1} detected
+                    </span>
+                  </div>
+
+                  {draft.extracted_requirements?.unmapped_criteria && draft.extracted_requirements.unmapped_criteria.length > 0 && (
+                    <div style={s.detectedList}>
+                      {draft.extracted_requirements.unmapped_criteria.map((crit: string, idx: number) => (
+                        <div key={idx} style={s.detectedItem}>
+                          <span style={{ color: '#4F46E5', fontWeight: 700, fontSize: '1rem', lineHeight: 1 }}>•</span>
+                          <span style={{ fontSize: '0.86rem', color: 'var(--text-primary)', fontWeight: 600 }}>{crit}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 14 }}>
+                    <label style={{ ...s.label, color: '#3730A3', marginBottom: 6 }}>
+                      Additional Criteria for Drive Eligibility:
+                    </label>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <textarea
+                        rows={2}
+                        style={{ ...s.input, minHeight: 64, flex: 1, borderColor: '#A5B4FC', resize: 'vertical' }}
+                        value={editForm.additional_eligibility_criteria ?? ''}
+                        placeholder="Edit or customize additional criteria for this drive..."
+                        onChange={(e) => setEditForm({ ...editForm, additional_eligibility_criteria: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveAdditionalCriteria(editForm.additional_eligibility_criteria)}
+                        style={{
+                          ...s.primaryBtn,
+                          background: '#4F46E5',
+                          padding: '10px 16px',
+                          fontSize: '0.84rem',
+                          whiteSpace: 'nowrap',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        title="Save criteria to this draft"
+                      >
+                        Save Criteria
+                      </button>
+                    </div>
+                    <span style={{ fontSize: '0.74rem', color: '#6366F1', marginTop: 4, display: 'block' }}>
+                      💡 These criteria will be attached to the published drive and displayed to candidates during application.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div style={s.card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.92rem', color: 'var(--text-primary)', fontWeight: 700 }}>
+                        Additional Eligibility Criteria (Optional)
+                      </h4>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        No non-standard criteria detected in JD. You can optionally add custom criteria below:
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <textarea
+                      rows={2}
+                      style={{ ...s.input, minHeight: 60, flex: 1, resize: 'vertical' }}
+                      value={editForm.additional_eligibility_criteria ?? ''}
+                      placeholder="e.g. 2 years service agreement / bond, minimum 70% in degree aggregate, specific certifications, etc."
+                      onChange={(e) => setEditForm({ ...editForm, additional_eligibility_criteria: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveAdditionalCriteria(editForm.additional_eligibility_criteria)}
+                      style={{
+                        ...s.secondaryBtn,
+                        padding: '10px 14px',
+                        fontSize: '0.84rem',
+                        whiteSpace: 'nowrap',
+                        alignSelf: 'stretch',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      Save Criteria
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1060,6 +1280,45 @@ const s: Record<string, React.CSSProperties> = {
     padding: '24px 16px',
     boxSizing: 'border-box',
     overflowY: 'auto',
+  },
+  aiNoticeCard: {
+    background: 'rgba(99, 102, 241, 0.08)',
+    border: '1px solid rgba(99, 102, 241, 0.3)',
+    borderRadius: 12,
+    padding: '16px 20px',
+  },
+  aiNoticeBadgeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    background: 'rgba(99, 102, 241, 0.18)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detectedCountPill: {
+    padding: '3px 10px',
+    borderRadius: 999,
+    fontSize: '0.74rem',
+    fontWeight: 700,
+    background: 'rgba(99, 102, 241, 0.16)',
+    color: '#4F46E5',
+    border: '1px solid rgba(99, 102, 241, 0.3)',
+  },
+  detectedList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    background: 'var(--bg-main, rgba(255, 255, 255, 0.65))',
+    padding: '10px 14px',
+    borderRadius: 8,
+    border: '1px solid rgba(99, 102, 241, 0.15)',
+    marginTop: 8,
+  },
+  detectedItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
   },
   modal: {
     background: 'var(--card-bg, #1e293b)',

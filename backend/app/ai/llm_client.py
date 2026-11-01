@@ -269,6 +269,8 @@ class LLMClient:
 
         # 6. CGPA
         cgpa_match = re.search(r"(?:cgpa|gpa)\s*(?:of|>=|>=|is|above|minimum|min)?\s*[:\-]?\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+        if not cgpa_match:
+            cgpa_match = re.search(r"(?:minimum|min|at\s+least)?\s*(\d+(?:\.\d+)?)\s*(?:cgpa|gpa)", text, re.IGNORECASE)
         min_cgpa = 0.0
         if cgpa_match:
             val = float(cgpa_match.group(1))
@@ -277,27 +279,39 @@ class LLMClient:
 
         # 7. Percentage (UG, 10th, 12th)
         ug_pct = None
-        pct_matches = re.findall(r"(\d{2}(?:\.\d+)?)\s*%", text)
-        if pct_matches:
-            # Check context
-            if re.search(r"(?:10th|ssc|secondary)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE):
-                m = re.search(r"(?:10th|ssc|secondary)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
-                tenth_pct = float(m.group(1))
-            else:
-                tenth_pct = None
+        tenth_pct = None
+        twelfth_pct = None
 
-            if re.search(r"(?:12th|inter|intermediate|higher\s+secondary)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE):
-                m = re.search(r"(?:12th|inter|intermediate|higher\s+secondary)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
-                twelfth_pct = float(m.group(1))
-            else:
-                twelfth_pct = None
+        # Check for shared criteria like "60% throughout in 10th, 12th" or "minimum 65% in 10th and 12th"
+        shared_m = re.search(r"(\d{2}(?:\.\d+)?)\s*%\s*(?:throughout\s+(?:in\s+)?)?(?:in\s+)?(?:10th|ssc).*(?:12th|inter|diploma|hsc)", text, re.IGNORECASE)
+        if not shared_m:
+            shared_m = re.search(r"(?:10th|ssc).*(?:12th|inter|diploma|hsc).*?(?:minimum|min|of|at least)?\s*(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+        if not shared_m:
+            shared_m = re.search(r"(\d{2}(?:\.\d+)?)\s*%\s*(?:in|throughout)\s*(?:10th|12th|ssc|inter|diploma)", text, re.IGNORECASE)
 
-            if re.search(r"(?:ug|graduation|degree|aggregate|b\.?tech)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE):
-                m = re.search(r"(?:ug|graduation|degree|aggregate|b\.?tech)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
-                ug_pct = float(m.group(1))
-        else:
-            tenth_pct = None
-            twelfth_pct = None
+        if shared_m:
+            val = float(shared_m.group(1))
+            tenth_pct = val
+            twelfth_pct = val
+
+        # Specific 10th percentage
+        m10 = re.search(r"(?:10th|ssc|secondary|matriculation)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+        if not m10:
+            m10 = re.search(r"(\d{2}(?:\.\d+)?)\s*%\s*(?:in|for|throughout)?\s*(?:10th|ssc|secondary|matriculation)", text, re.IGNORECASE)
+        if m10:
+            tenth_pct = float(m10.group(1))
+
+        # Specific 12th percentage
+        m12 = re.search(r"(?:12th|inter|intermediate|higher\s+secondary|diploma|hsc)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+        if not m12:
+            m12 = re.search(r"(\d{2}(?:\.\d+)?)\s*%\s*(?:in|for|throughout)?\s*(?:12th|inter|intermediate|higher\s+secondary|diploma)", text, re.IGNORECASE)
+        if m12:
+            twelfth_pct = float(m12.group(1))
+
+        # Specific UG percentage
+        mug = re.search(r"(?:ug|graduation|degree|aggregate|b\.?tech)\s*[^.\n]*?(\d{2}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+        if mug:
+            ug_pct = float(mug.group(1))
 
         # 8. Backlogs
         max_backlogs = 99
@@ -370,6 +384,51 @@ class LLMClient:
                 except Exception:
                     drive_deadline = cand_dl
 
+        # 14. Non-Standard / Unmapped Criteria Detection
+        unmapped_criteria = []
+
+        # Service Agreement / Bond
+        bond_m = re.search(r"(?:bond|service\s+agreement|service\s+commitment)\s*[:\-]?\s*([^\n.;]+)", text, re.IGNORECASE)
+        if not bond_m:
+            bond_m = re.search(r"(\d+\s*(?:years?|months?)\s*(?:bond|service\s+agreement))", text, re.IGNORECASE)
+        if bond_m:
+            unmapped_criteria.append(f"Service Agreement / Bond: {bond_m.group(0).strip()}")
+
+        # Minimum Graduation / UG percentage
+        if ug_pct is not None:
+            unmapped_criteria.append(f"Minimum Graduation / UG Aggregate: {ug_pct}%")
+
+        # Education Gap limit
+        gap_m = re.search(r"(?:education(?:al)?\s*gap|year\s*gap|academic\s*gap)\s*[:\-]?\s*([^\n.;]+)", text, re.IGNORECASE)
+        if not gap_m:
+            gap_m = re.search(r"(max(?:imum)?\s*\d+\s*years?\s*(?:education(?:al)?\s*)?gap)", text, re.IGNORECASE)
+        if not gap_m:
+            gap_m = re.search(r"(no\s+(?:education(?:al)?\s*)?gaps?\s*(?:allowed)?)", text, re.IGNORECASE)
+        if gap_m:
+            unmapped_criteria.append(f"Education Gap Restriction: {gap_m.group(0).strip()}")
+
+        # Shift / Rotational
+        shift_m = re.search(r"(24[/*]7|rotational\s+shifts?|night\s+shifts?|flexible\s+to\s+work\s+in\s+shifts?)", text, re.IGNORECASE)
+        if shift_m:
+            unmapped_criteria.append(f"Shift Requirement: {shift_m.group(0).strip()}")
+
+        # Mandatory Certifications
+        cert_m = re.search(r"((?:AWS|Azure|GCP|CCNA|Java|Oracle|Salesforce|Red\s*Hat)\s+certifi(?:ed|cation)[^\n,;.]*)", text, re.IGNORECASE)
+        if cert_m:
+            unmapped_criteria.append(f"Mandatory Certification: {cert_m.group(0).strip()}")
+
+        # Work Authorization / Citizenship
+        auth_m = re.search(r"(indian\s+citizens?\s+only|work\s+authorization|valid\s+passport\s+required)", text, re.IGNORECASE)
+        if auth_m:
+            unmapped_criteria.append(f"Work Authorization: {auth_m.group(0).strip()}")
+
+        # Age criteria
+        age_m = re.search(r"(?:age\s*(?:limit|below|less\s+than|<=)?\s*[:\-]?\s*(\d{2})\s*(?:years?)?)", text, re.IGNORECASE)
+        if age_m:
+            unmapped_criteria.append(f"Age Limit: {age_m.group(0).strip()}")
+
+        additional_eligibility_criteria = "; ".join(unmapped_criteria) if unmapped_criteria else None
+
         return {
             "company_name": company_name,
             "job_role": job_role,
@@ -393,7 +452,9 @@ class LLMClient:
             "external_apply_link": external_apply_link,
             "drive_deadline": drive_deadline,
             "interview_date": None,
-            "other_requirements": None
+            "other_requirements": None,
+            "unmapped_criteria": unmapped_criteria,
+            "additional_eligibility_criteria": additional_eligibility_criteria
         }
 
 # Global singleton client

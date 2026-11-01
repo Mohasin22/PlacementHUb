@@ -10,6 +10,8 @@ CRITICAL RULES:
 1. NEVER invent or hallucinate information. If a field is not explicitly stated or clearly implied in the text, you MUST return null.
 2. For numeric criteria:
    - min_cgpa: Float between 0.0 and 10.0 (e.g. 7.5). If not mentioned, return 0.0.
+   - min_tenth_percentage: Float (e.g. 60.0, 75.0) for minimum 10th / Secondary / SSC percentage or score if specified in JD (e.g. "60% in 10th", "Min 65% throughout 10th, 12th"). If unspecified, return null.
+   - min_twelfth_percentage: Float (e.g. 60.0, 75.0) for minimum 12th / Higher Secondary / Intermediate / Diploma percentage or score if specified in JD. If unspecified, return null.
    - max_backlogs: Integer. If "no active backlogs" or "zero backlogs", return 0. If unspecified, return null.
    - passout_year: 4-digit graduation year (e.g. 2026). If unspecified, return null.
 3. For departments and programs:
@@ -22,7 +24,13 @@ CRITICAL RULES:
    - If a date is mentioned without hours/time (e.g. "25 November 2026"), default the time to end-of-day: "23:59:59" (e.g. "2026-11-25 23:59:59").
    - If hours/time are specified (e.g. "5:00 PM" or "18:00"), convert it accurately to 24-hour time (e.g. "2026-11-25 17:00:00").
    - If no deadline is stated in the JD, return null.
-7. Output MUST strictly be valid JSON matching this schema:
+7. For unmapped and non-standard criteria:
+   - Standard drive options are: company_name, job_role, package, location, mode, min_cgpa, min_tenth_percentage, min_twelfth_percentage, max_backlogs, allowed_departments, allowed_programs, passout_year, drive_deadline, required_skills, gender_filter.
+   - If the JD mentions ANY criteria that do NOT fit into standard options (such as service agreements/bonds, graduation/degree aggregate percentage cutoffs, educational gap limitations, mandatory certifications, shift timings/night shifts, citizenship/work authorization, age limits, etc.):
+     * Extract each distinct criterion as a clear string item in the "unmapped_criteria" array.
+     * Synthesize all unmapped criteria into "additional_eligibility_criteria" as a clean, concise summary string for the TPO to add as additional criteria for drive eligibility.
+   - If no extra unmapped criteria exist, return "unmapped_criteria": [] and "additional_eligibility_criteria": null.
+8. Output MUST strictly be valid JSON matching this schema:
 {
   "company_name": string | null,
   "job_role": string | null,
@@ -46,7 +54,9 @@ CRITICAL RULES:
   "external_apply_link": string | null,
   "drive_deadline": string | null,
   "interview_date": string | null,
-  "other_requirements": string | null
+  "other_requirements": string | null,
+  "unmapped_criteria": [string],
+  "additional_eligibility_criteria": string | null
 }
 """
 

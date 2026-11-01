@@ -56,6 +56,8 @@ class ExtractedJDRequirements(BaseModel):
     drive_deadline: Optional[str] = None  # ISO format string or None
     interview_date: Optional[str] = None
     other_requirements: Optional[str] = None
+    unmapped_criteria: List[str] = Field(default_factory=list)
+    additional_eligibility_criteria: Optional[str] = None
 
 # ── 3. AI Drive Draft Model & Lifecycle ───────────────────────────────────────
 
@@ -71,6 +73,7 @@ class AIDriveDraft(BaseModel):
     validation_issues: List[ValidationIssueItem] = Field(default_factory=list)
     ambiguous_fields: List[MappingItem] = Field(default_factory=list)
     confidence_score: float = 0.0
+    unmapped_criteria: List[str] = Field(default_factory=list)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     approved_by: Optional[str] = None

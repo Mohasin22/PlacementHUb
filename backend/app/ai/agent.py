@@ -269,6 +269,16 @@ class AIAgent:
         if mapped_dept_ids: score += 0.1
         confidence_score = min(round(score, 2), 1.0)
 
+        # Ensure unmapped_criteria and additional_eligibility_criteria are cleanly set
+        unmapped = raw_extraction.get("unmapped_criteria") or []
+        min_ug = raw_extraction.get("min_ug_percentage")
+        if min_ug and not any("Graduation" in c or "UG" in c for c in unmapped):
+            unmapped.append(f"Minimum Graduation / UG Aggregate: {min_ug}%")
+        raw_extraction["unmapped_criteria"] = unmapped
+
+        if not raw_extraction.get("additional_eligibility_criteria") and unmapped:
+            raw_extraction["additional_eligibility_criteria"] = "; ".join(unmapped)
+
         draft = AIDriveDraft(
             institution_id=institution_id,
             created_by=user_id,
@@ -279,7 +289,8 @@ class AIAgent:
             missing_fields=missing,
             validation_issues=issues,
             ambiguous_fields=ambiguous_records,
-            confidence_score=confidence_score
+            confidence_score=confidence_score,
+            unmapped_criteria=unmapped
         )
 
         return draft

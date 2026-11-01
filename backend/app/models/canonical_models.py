@@ -298,6 +298,7 @@ class DriveRequirementRule(BaseModel):
     education_gap_allowed: Optional[bool] = True
     first_attempt_required: Optional[bool] = False
     gender_filter: str = "All"  # All, Male, Female
+    additional_eligibility_criteria: Optional[str] = None
 
 # ── 13. Application Snapshot Schema ───────────────────────────────────────────
 class ApplicationSnapshot(BaseModel):

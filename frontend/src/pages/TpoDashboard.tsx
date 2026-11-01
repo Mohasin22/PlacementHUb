@@ -52,6 +52,7 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
 const EMPTY_FORM = {
   companyName: '', jobRole: '', package: '', location: '', mode: 'On-campus',
   minCgpa: 6.0, maxBacklogs: 0, genderFilter: 'All',
+  minTenth: '', minTwelfth: '', additionalCriteria: '',
   passoutYear: new Date().getFullYear(), externalLink: '', deadline: '',
   allowedDepts: [] as string[], allowedProgs: [] as string[],
 };
@@ -346,6 +347,9 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
     const body = {
       company_name: form.companyName, job_role: form.jobRole, package: form.package,
       location: form.location, mode: form.mode, min_cgpa: form.minCgpa,
+      min_tenth_percentage: form.minTenth ? parseFloat(form.minTenth) : null,
+      min_twelfth_percentage: form.minTwelfth ? parseFloat(form.minTwelfth) : null,
+      additional_eligibility_criteria: form.additionalCriteria ? form.additionalCriteria.trim() : null,
       max_backlogs: form.maxBacklogs, gender_filter: form.genderFilter,
       passout_year: form.passoutYear,
       external_apply_link: form.externalLink || null,
@@ -378,6 +382,9 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
       location: drive.location,
       mode: drive.mode,
       minCgpa: drive.min_cgpa,
+      minTenth: drive.min_tenth_percentage != null ? String(drive.min_tenth_percentage) : '',
+      minTwelfth: drive.min_twelfth_percentage != null ? String(drive.min_twelfth_percentage) : '',
+      additionalCriteria: drive.additional_eligibility_criteria || '',
       maxBacklogs: drive.max_backlogs,
       genderFilter: drive.gender_filter || 'All',
       passoutYear: drive.passout_year || new Date().getFullYear(),
@@ -863,9 +870,23 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontWeight: 600 }}>CGPA =</span>
+                            <span style={{ fontWeight: 600 }}>CGPA ≥</span>
                             <span>{d.min_cgpa ?? 0}</span>
                           </div>
+
+                          {d.min_tenth_percentage != null && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontWeight: 600 }}>10th ≥</span>
+                              <span>{d.min_tenth_percentage}%</span>
+                            </div>
+                          )}
+
+                          {d.min_twelfth_percentage != null && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontWeight: 600 }}>12th ≥</span>
+                              <span>{d.min_twelfth_percentage}%</span>
+                            </div>
+                          )}
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ fontWeight: 600 }}>Depts:</span>
@@ -2219,6 +2240,40 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                 </label>
 
                 <label style={s.label}>
+                  Min 10th % (Optional)
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="e.g. 60 (optional)"
+                    style={s.input}
+                    value={form.minTenth}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                        setForm({ ...form, minTenth: val });
+                      }
+                    }}
+                  />
+                </label>
+
+                <label style={s.label}>
+                  Min 12th / Diploma % (Optional)
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="e.g. 60 (optional)"
+                    style={s.input}
+                    value={form.minTwelfth}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                        setForm({ ...form, minTwelfth: val });
+                      }
+                    }}
+                  />
+                </label>
+
+                <label style={s.label}>
                   Passout Year
                   <input
                     type="number"
@@ -2246,6 +2301,17 @@ export const TpoDashboard: React.FC<TpoDashboardProps> = ({ token, institutionId
                     style={s.input}
                     value={form.deadline}
                     onChange={e => setForm({ ...form, deadline: e.target.value })}
+                  />
+                </label>
+
+                <label style={{ ...s.label, gridColumn: 'span 2' }}>
+                  Additional Eligibility Criteria (Optional)
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. 2 years service agreement / bond, minimum 70% in degree aggregate, specific certifications, shift timings, etc."
+                    style={{ ...s.input, minHeight: 64, resize: 'vertical' }}
+                    value={form.additionalCriteria}
+                    onChange={e => setForm({ ...form, additionalCriteria: e.target.value })}
                   />
                 </label>
               </div>

@@ -34,6 +34,7 @@ class DriveCreatePayload(BaseModel):
     first_attempt_required: bool = False
     gender_filter: str = "All"      # "All", "Male", "Female"
     passout_year: int
+    additional_eligibility_criteria: Optional[str] = None
     external_apply_link: Optional[str] = None
     drive_deadline: datetime
 
@@ -68,6 +69,7 @@ async def create_drive(
         "first_attempt_required": payload.first_attempt_required,
         "gender_filter": payload.gender_filter,
         "passout_year": payload.passout_year,
+        "additional_eligibility_criteria": payload.additional_eligibility_criteria.strip() if payload.additional_eligibility_criteria else None,
         "external_apply_link": payload.external_apply_link,
         "drive_deadline": deadline,
         "created_by": current_user["user_id"],
@@ -176,6 +178,7 @@ async def update_drive(
         "first_attempt_required": payload.first_attempt_required,
         "gender_filter": payload.gender_filter,
         "passout_year": payload.passout_year,
+        "additional_eligibility_criteria": payload.additional_eligibility_criteria.strip() if payload.additional_eligibility_criteria else None,
         "external_apply_link": payload.external_apply_link,
         "drive_deadline": deadline,
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -235,6 +238,9 @@ async def get_student_drive_feed(
                 "mode": d["mode"],
                 "drive_deadline": d["drive_deadline"],
                 "external_apply_link": d.get("external_apply_link"),
+                "min_tenth_percentage": d.get("min_tenth_percentage"),
+                "min_twelfth_percentage": d.get("min_twelfth_percentage"),
+                "additional_eligibility_criteria": d.get("additional_eligibility_criteria"),
                 "is_eligible": is_eligible,
                 "eligibility_reasons": reasons,
                 "applied": True if applied else False,
@@ -266,6 +272,7 @@ async def get_application_preview(
         "is_eligible": is_eligible,
         "eligibility_reasons": reasons,
         "eligibility_breakdown": breakdown,
+        "additional_eligibility_criteria": drive.get("additional_eligibility_criteria"),
         "snapshot_preview": {
             "name": student.get("name") or student.get("identity", {}).get("full_name"),
             "roll_number": student.get("roll_number") or student.get("student_id"),
